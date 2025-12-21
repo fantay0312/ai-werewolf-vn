@@ -232,10 +232,12 @@ const sortedPlayers = computed(() => {
   return [...gameStore.players].sort((a, b) => a.id - b.id)
 })
 
-// 公开日志（先发生的在上方，最新的在下方）
+// 公开日志及玩家自己的私有日志（预言家查验结果等）
 const publicLogs = computed(() => {
-  return (gameStore.gameState?.game_logs || [])
-    .filter(log => log.is_public)
+  const logs = gameStore.gameState?.game_logs || []
+  const myId = gameStore.myPlayer?.id
+  return logs
+    .filter(log => log.is_public || (myId && log.player_id === myId))
     .slice(-20)
 })
 
@@ -272,6 +274,9 @@ const phaseHint = computed(() => {
     DAY_DISCUSS: '白天讨论时间，自由发言。',
     DAY_VOTE: '投票时间，选择要放逐的玩家。',
     DAY_VOTE_RESULT: '投票结束，公布结果。',
+    DAY_PK_SPEECH: '平票PK，候选人进行PK发言。',
+    DAY_PK_VOTE: 'PK投票，请在候选人中选择。',
+    DAY_PK_RESULT: 'PK投票结束，公布结果。',
     HUNTER_SKILL: '猎人/狼王可以发动技能。',
     SHERIFF_TRANSFER: '警长移交警徽。',
     GAME_END: '游戏结束！'

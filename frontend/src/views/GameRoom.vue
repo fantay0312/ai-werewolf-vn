@@ -37,7 +37,10 @@
     <VoteModal
       v-model="showVoteModal"
       :vote-type="voteType"
+      :vote-records="voteRecords"
+      :time-remaining="timeRemaining"
       @voted="onVoted"
+      @close="showVoteModal = false"
     />
 
     <!-- Game End Overlay -->
@@ -110,6 +113,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '../stores/gameStore'
+import type { VoteRecord } from '../types'
 import GameTable from '../components/game/GameTable.vue'
 import ActionPanel from '../components/game/ActionPanel.vue'
 import JudgeArea from '../components/game/JudgeArea.vue'
@@ -271,6 +275,27 @@ const showWolfModal = ref(false)
 const showVoteModal = ref(false)
 const voteType = ref<'exile' | 'sheriff'>('exile')
 
+// 投票记录计算属性 - 从gameStore.votes转换为VoteRecord[]
+const voteRecords = computed<VoteRecord[]>(() => {
+  const votes = gameStore.gameState?.votes || {}
+  const sheriffId = gameStore.sheriffId
+  const pkVotes = gameStore.gameState?.pk_votes || {}
+
+  // 根据当前阶段选择使用哪个投票数据
+  const currentVotes = gameStore.currentPhase === 'DAY_PK_VOTE' || gameStore.currentPhase === 'DAY_PK_RESULT'
+    ? pkVotes
+    : votes
+
+  return Object.entries(currentVotes).map(([voterId, targetId]) => ({
+    voterId: Number(voterId),
+    targetId: targetId as number | null,
+    weight: Number(voterId) === sheriffId ? 2 : 1
+  }))
+})
+
+// 剩余时间
+const timeRemaining = computed(() => gameStore.gameState?.time_remaining || 60)
+
 // Game end computed
 const winnerText = computed(() => {
   if (gameStore.winner === 'wolf') return '狼人阵营胜利!'
@@ -318,13 +343,14 @@ watch(
     }
 
     // Auto open vote modal during vote phases
-    if (phase === 'DAY_VOTE') {
+    if (phase === 'DAY_VOTE' || phase === 'DAY_PK_VOTE') {
       voteType.value = 'exile'
       showVoteModal.value = true
     } else if (phase === 'SHERIFF_VOTE' && !gameStore.isCandidate) {
       voteType.value = 'sheriff'
       showVoteModal.value = true
-    } else {
+    } else if (!['DAY_VOTE_RESULT', 'DAY_PK_RESULT'].includes(phase)) {
+      // 只在非结果阶段关闭，让用户能看到投票结果
       showVoteModal.value = false
     }
   }

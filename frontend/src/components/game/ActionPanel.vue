@@ -265,26 +265,27 @@
           </div>
         </div>
 
-        <!-- Sheriff Transfer -->
-        <div v-if="isSheriffTransferPhase && gameStore.myPlayer?.is_sheriff" class="action-group sheriff">
-          <span class="action-label">👮 移交警徽</span>
-          <div class="input-group">
-            <input
-              v-model.number="targetId"
-              type="number"
-              placeholder="目标ID"
-              min="1"
-              max="12"
-              class="input-field"
-            />
-            <button @click="submitAction('vote')" class="btn btn-gold">移交</button>
-            <button @click="submitAction('vote', 0)" class="btn btn-danger">撕警徽</button>
-          </div>
-        </div>
       </template>
 
+      <!-- Sheriff Transfer - 独立于存活状态，死亡警长也能移交 -->
+      <div v-if="isSheriffTransferPhase && gameStore.myPlayer?.is_sheriff" class="action-group sheriff">
+        <span class="action-label">👮 移交警徽</span>
+        <div class="input-group">
+          <input
+            v-model.number="targetId"
+            type="number"
+            placeholder="目标ID"
+            min="1"
+            max="12"
+            class="input-field"
+          />
+          <button @click="submitAction('vote')" class="btn btn-gold">移交</button>
+          <button @click="submitAction('vote', 0)" class="btn btn-danger">撕警徽</button>
+        </div>
+      </div>
+
       <!-- Dead Player View -->
-      <div v-else-if="gameStore.myPlayer" class="dead-message">
+      <div v-else-if="gameStore.myPlayer && !gameStore.myPlayer.is_alive && !isSheriffTransferPhase" class="dead-message">
         <span class="dead-icon">👻</span>
         <span>你已死亡，正在观战...</span>
       </div>

@@ -17,6 +17,9 @@ export type GamePhase =
   | 'DAY_DISCUSS'
   | 'DAY_VOTE'
   | 'DAY_VOTE_RESULT'
+  | 'DAY_PK_SPEECH'
+  | 'DAY_PK_VOTE'
+  | 'DAY_PK_RESULT'
   | 'HUNTER_SKILL'
   | 'SHERIFF_TRANSFER'
   | 'GAME_END'
@@ -114,6 +117,8 @@ export interface GameState {
   time_remaining: number
   winner: string | null
   votes: Record<number, number>
+  pk_votes?: Record<number, number>
+  pk_candidates?: number[]
   wolf_kill_target: number | null
   dead_players: number[]
   sheriff_candidate_ids: number[]
@@ -172,6 +177,9 @@ export const PHASE_NAMES: Record<GamePhase, string> = {
   DAY_DISCUSS: '白天讨论',
   DAY_VOTE: '白天投票',
   DAY_VOTE_RESULT: '投票结果',
+  DAY_PK_SPEECH: 'PK发言',
+  DAY_PK_VOTE: 'PK投票',
+  DAY_PK_RESULT: 'PK结果',
   HUNTER_SKILL: '猎人/狼王技能',
   SHERIFF_TRANSFER: '警徽移交',
   GAME_END: '游戏结束'
