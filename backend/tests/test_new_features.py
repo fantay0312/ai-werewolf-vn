@@ -72,19 +72,23 @@ def test_double_wolf_self_explode():
     game = gm.create_game()
     game.phase = GamePhase.SHERIFF_SPEECH
     game.sheriff_candidate_ids = [1, 2, 3]
-    game.players[0].role = Role.WOLF # Player 1 is wolf
-    game.election_explode_count = 1 # Already one explosion
-    
+    game.players[0].role = Role.WOLF  # Player 1 is wolf
+    game.players[1].role = Role.WOLF  # Player 2 is wolf (need 2 wolf candidates)
+    game.election_explode_count = 1   # Already one explosion
+    # Must track wolf candidates for double-explode rule
+    game.election_wolf_candidates = [2, 1]  # Both wolves ran for sheriff
+
     handler = SheriffSpeechHandler(gm, game)
     handler.on_enter()
-    
+
     # Player 1 explodes (Second explosion)
     action = ActionRequest(player_id=1, type=ActionType.SELF_EXPLODE, timestamp=0)
     assert handler.process_action(action) is True
-    
+
     assert game.election_explode_count == 2
-    assert game.pending_sheriff_election is False # Cancelled
-    
+    assert game.election_cancelled is True  # Double explode cancels election
+    assert game.pending_sheriff_election is False
+
     # Should advance to Night
     assert handler.try_advance() == GamePhase.NIGHT_START
 

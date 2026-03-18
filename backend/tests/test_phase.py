@@ -24,14 +24,16 @@ def test_phase_transition():
     response = client.post(f"/api/player/{session_id}/action", json=action)
     assert response.status_code == 200
 
-    # Check game state - should have advanced to a night phase
-    # AI agents without LLM_API_KEY will use fallback PASS actions
-    # so phases may advance quickly
+    # Check game state - should have advanced past GAME_START
+    # Day 1 flow: GAME_START -> SHERIFF_ELECTION -> (SHERIFF_SPEECH/VOTE) -> NIGHT
+    # AI agents without LLM_API_KEY use fallback PASS, so phases may advance quickly
     response = client.get(f"/api/game/{session_id}")
     data = response.json()
 
-    # Game should be in one of the night phases
-    night_phases = [
+    acceptable_phases = [
+        GamePhase.SHERIFF_ELECTION,
+        GamePhase.SHERIFF_SPEECH,
+        GamePhase.SHERIFF_VOTE,
         GamePhase.NIGHT_START,
         GamePhase.NIGHT_WOLF_DISCUSS,
         GamePhase.NIGHT_WOLF_VOTE,
@@ -42,4 +44,5 @@ def test_phase_transition():
         GamePhase.DAY_START,
         GamePhase.DAY_LAST_WORDS,
     ]
-    assert data["phase"] in [p.value for p in night_phases], f"Expected night phase, got {data['phase']}"
+    assert data["phase"] in [p.value for p in acceptable_phases], \
+        f"Expected post-start phase, got {data['phase']}"
