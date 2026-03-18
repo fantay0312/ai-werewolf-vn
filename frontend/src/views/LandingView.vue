@@ -43,9 +43,14 @@
       </div>
 
       <!-- Start game button -->
-      <button class="start-btn" @click="startGame">
-        [ 开始游戏 ]
+      <button class="start-btn" @click="startGame" :disabled="gameStore.isLoading">
+        {{ gameStore.isLoading ? '[ 连接中... ]' : '[ 开始游戏 ]' }}
       </button>
+
+      <!-- Error display -->
+      <div v-if="gameStore.error" class="error-msg">
+        {{ gameStore.error }}
+      </div>
 
       <div class="sys-label label-bottom-left">
         V 1.0.4<br>
@@ -320,8 +325,12 @@ function onSettingsSaved() {
 }
 
 async function startGame() {
-  await gameStore.createGame()
-  router.push('/game')
+  try {
+    await gameStore.createGame()
+    router.push('/game')
+  } catch {
+    // gameStore.createGame already sets error via setError
+  }
 }
 
 let cleanup: (() => void) | undefined
@@ -485,9 +494,20 @@ canvas {
   letter-spacing: 4px;
   transition: all 0.2s;
 }
-.start-btn:hover {
+.start-btn:hover:not(:disabled) {
   border-color: #fff;
   color: #fff;
   box-shadow: 0 0 20px rgba(255, 255, 255, 0.05);
+}
+.start-btn:disabled {
+  color: #444;
+  border-color: #222;
+  cursor: wait;
+}
+
+.error-msg {
+  font-size: 14px;
+  color: #f44;
+  letter-spacing: 1px;
 }
 </style>
