@@ -3,19 +3,55 @@ import { ref, computed, watch } from 'vue'
 import { gameApi, GameStatePoller } from '../api'
 import type { GameState, ActionType } from '../types'
 
+const DEFAULT_LOADING_TEXT = '加载中...'
+const ERROR_DISPLAY_MS = 3000
+
+// Timeout per action type (seconds)
+const ACTION_TIMEOUTS: Record<string, number> = {
+  speech: 45,
+  confirm: 15,
+  pass: 15,
+  vote: 20,
+  kill: 25,
+  check: 30,
+  save: 25,
+  poison: 25,
+  guard: 25,
+  shoot: 20,
+  run_for_sheriff: 20,
+  withdraw: 15,
+  self_explode: 15,
+}
+const DEFAULT_TIMEOUT = 35
+
+// Loading text per action type
+const ACTION_LOADING_TEXT: Record<string, string> = {
+  confirm: '正在确认...',
+  vote: '正在投票...',
+  kill: '正在执行行动...',
+  check: '正在查验...',
+  save: '正在使用解药...',
+  poison: '正在使用毒药...',
+  guard: '正在守护...',
+  speech: '正在发言...',
+  run_for_sheriff: '正在竞选警长...',
+  withdraw: '正在退水...',
+  shoot: '正在开枪...',
+  pass: '正在跳过...',
+}
+
 export const useGameStore = defineStore('game', () => {
   // State
   const gameState = ref<GameState | null>(null)
   const sessionId = ref<string | null>(null)
   const loadingCount = ref(0)
   const isLoading = computed(() => loadingCount.value > 0)
-  const loadingText = ref<string>('加载中...')
+  const loadingText = ref<string>(DEFAULT_LOADING_TEXT)
   const loadingStartTime = ref<number>(0)
   const error = ref<string | null>(null)
   const poller = new GameStatePoller()
   let errorTimeout: ReturnType<typeof setTimeout> | null = null
 
-  // Auto-clear error after 3 seconds
   function setError(message: string | null) {
     if (errorTimeout) {
       clearTimeout(errorTimeout)
@@ -23,14 +59,11 @@ export const useGameStore = defineStore('game', () => {
     }
     error.value = message
     if (message) {
-      errorTimeout = setTimeout(() => {
-        error.value = null
-      }, 3000)
+      errorTimeout = setTimeout(() => { error.value = null }, ERROR_DISPLAY_MS)
     }
   }
 
-  // 设置加载状态
-  function startLoading(text: string = '加载中...') {
+  function startLoading(text: string = DEFAULT_LOADING_TEXT) {
     loadingCount.value++
     loadingText.value = text
     loadingStartTime.value = Date.now()
@@ -39,53 +72,28 @@ export const useGameStore = defineStore('game', () => {
   function stopLoading() {
     loadingCount.value = Math.max(0, loadingCount.value - 1)
     if (loadingCount.value === 0) {
-      loadingText.value = '加载中...'
+      loadingText.value = DEFAULT_LOADING_TEXT
       loadingStartTime.value = 0
     }
   }
 
-  // 强制取消加载
   function cancelLoading() {
-    console.warn('用户取消加载')
     loadingCount.value = 0
-    loadingText.value = '加载中...'
+    loadingText.value = DEFAULT_LOADING_TEXT
     loadingStartTime.value = 0
   }
 
-  // 根据操作类型设置不同的超时时间（秒）
-  const getTimeoutForAction = (actionType: string): number => {
-    const timeoutMap: Record<string, number> = {
-      'speech': 45,      // 发言可能需要AI生成，需要更长时间
-      'confirm': 15,     // 确认操作通常很快
-      'pass': 15,        // 跳过操作很快
-      'vote': 20,        // 投票需要思考
-      'kill': 25,        // 击杀需要讨论
-      'check': 30,       // 查验需要AI思考
-      'save': 25,        // 使用解药需要判断
-      'poison': 25,      // 使用毒药需要判断
-      'guard': 25,       // 守护需要判断
-      'shoot': 20,       // 开枪需要判断
-      'run_for_sheriff': 20, // 竞选需要思考
-      'withdraw': 15,    // 退水很快
-      'self_explode': 15 // 自爆很快
-    }
-    return timeoutMap[actionType] || 35 // 默认35秒（比API的30秒多5秒）
-  }
-
-  // Safety timeout to prevent stuck loading (根据操作类型动态设置)
+  // Safety timeout to prevent stuck loading
   let loadingTimeout: ReturnType<typeof setTimeout> | null = null
-  let currentActionType = ref<string>('')
-  
+  const currentActionType = ref<string>('')
+
   watch(isLoading, (loading: boolean) => {
     if (loading) {
       if (loadingTimeout) clearTimeout(loadingTimeout)
-      const timeoutMs = getTimeoutForAction(currentActionType.value) * 1000
+      const timeoutMs = (ACTION_TIMEOUTS[currentActionType.value] ?? DEFAULT_TIMEOUT) * 1000
       loadingTimeout = setTimeout(() => {
         if (isLoading.value) {
-          console.warn(`Loading stuck for too long (${currentActionType.value}), forcing reset`)
-          loadingCount.value = 0
-          loadingText.value = '加载中...'
-          loadingStartTime.value = 0
+          cancelLoading()
           setError('操作超时，请重试。如果问题持续，请刷新页面。')
         }
       }, timeoutMs)
@@ -116,7 +124,6 @@ export const useGameStore = defineStore('game', () => {
 
   // Actions
   async function createGame() {
-    console.log('createGame: start loading')
     startLoading('正在创建游戏...')
     setError(null)
     try {
@@ -127,10 +134,8 @@ export const useGameStore = defineStore('game', () => {
       startPolling()
     } catch (err: any) {
       setError(err.response?.data?.detail || '创建游戏失败')
-      console.error('Failed to create game:', err)
       throw err
     } finally {
-      console.log('createGame: stop loading')
       stopLoading()
     }
   }
@@ -167,27 +172,8 @@ export const useGameStore = defineStore('game', () => {
       return
     }
 
-    // 根据操作类型显示不同的加载提示
-    const loadingTextMap: Record<string, string> = {
-      'confirm': '正在确认...',
-      'vote': '正在投票...',
-      'kill': '正在执行行动...',
-      'check': '正在查验...',
-      'save': '正在使用解药...',
-      'poison': '正在使用毒药...',
-      'guard': '正在守护...',
-      'speech': '正在发言...',
-      'run_for_sheriff': '正在竞选警长...',
-      'withdraw': '正在退水...',
-      'shoot': '正在开枪...',
-      'pass': '正在跳过...'
-    }
-    const text = loadingTextMap[type] || '处理中...'
-    
-    // 记录当前操作类型，用于设置超时时间
+    const text = ACTION_LOADING_TEXT[type] || '处理中...'
     currentActionType.value = type
-    
-    console.log(`submitAction(${type}): start loading`)
     startLoading(text)
     setError(null)
     try {
@@ -201,10 +187,8 @@ export const useGameStore = defineStore('game', () => {
       await fetchGameState()
     } catch (err: any) {
       setError(err.response?.data?.detail || '提交操作失败')
-      console.error('Failed to submit action:', err)
       throw err
     } finally {
-      console.log(`submitAction(${type}): stop loading`)
       stopLoading()
       currentActionType.value = ''
     }
