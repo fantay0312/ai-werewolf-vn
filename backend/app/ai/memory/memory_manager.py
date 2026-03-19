@@ -7,6 +7,7 @@ from app.ai.memory.recent_layer import RecentLayer, DialogueEntry
 from app.core.rules import Rules
 from app.ai.utils.token_utils import count_tokens, truncate_to_token_limit
 from app.ai.memory.metadata_layer import MetadataLayer, SessionContext, GameConfig
+from app.config import get_config
 import datetime
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ class MemoryManager:
                 self.summary_layer = SummaryLayer(**player.ai_memory.get("summary_layer", {}))
                 self.recent_layer = RecentLayer(**player.ai_memory.get("recent_layer", {}))
                 self.last_log_index = player.ai_memory.get("last_log_index", 0)
-                logger.info(f"Loaded memory for player {self.player_id}")
+                logger.debug("Loaded memory for player %s", self.player_id)
             except Exception as e:
                 logger.error(f"Failed to load memory for player {self.player_id}: {e}")
                 
@@ -114,7 +115,17 @@ class MemoryManager:
                             result=log.data["result"]
                         ))
         elif my_player.role in [Role.HUNTER, Role.WOLF_KING]:
-            skill_status.can_shoot = Rules.can_shoot(my_player, "unknown")
+            skill_status.can_shoot = (
+                not my_player.is_alive
+                and Rules.can_shoot(
+                    my_player,
+                    my_player.death_cause,
+                    alive_wolves=len([
+                        p for p in game_state.players
+                        if p.is_alive and p.role in [Role.WOLF, Role.WOLF_KING]
+                    ]),
+                )
+            )
             
         self.fact_layer = FactLayer(
             game_id=game_state.session_id,
@@ -165,7 +176,7 @@ class MemoryManager:
                             day=log.day,
                             voted_for=target_id if target_id != 0 else None
                         ))
-                        logger.info(f"Recorded vote for player {voter_id} in memory of {self.player_id}")
+                        logger.debug("Recorded vote for player %s in memory of %s", voter_id, self.player_id)
 
             # Update Recent Dialogue
             if log.player_id and log.player_id != 0 and log.content:
@@ -284,7 +295,7 @@ class MemoryManager:
             else:
                 daily.day_summary += formatted_summary + "\n"
                 
-            logger.info(f"Generated summary for player {self.player_id}: {daily.headline}")
+            logger.debug("Generated summary for player %s", self.player_id)
             
         except Exception as e:
             logger.error(f"Failed to generate summary: {e}")
@@ -293,15 +304,14 @@ class MemoryManager:
 
     def _check_token_limit(self):
         """Check if recent layer exceeds token limit (e.g. 2000 chars approx)"""
-        # Simple heuristic limit
-        LIMIT = 2000
-        
-        # Calculate size
+        memory_config = get_config().memory
+        while len(self.recent_layer.current_phase_dialogue) > memory_config.max_recent_dialogues:
+            self.recent_layer.current_phase_dialogue.pop(0)
+
         text = "".join([d.content for d in self.recent_layer.current_phase_dialogue])
-        if count_tokens(text) > LIMIT:
-            # If current is too long, we might need to truncate oldest
-            # For now, just warn or drop oldest
-            pass
+        while self.recent_layer.current_phase_dialogue and count_tokens(text) > memory_config.recent_budget:
+            self.recent_layer.current_phase_dialogue.pop(0)
+            text = "".join([d.content for d in self.recent_layer.current_phase_dialogue])
 
     def _compress_memory(self):
         """Compress recent memory into summary"""

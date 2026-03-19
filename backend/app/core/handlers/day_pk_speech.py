@@ -17,15 +17,17 @@ class DayPKSpeechHandler(PhaseHandler):
         self.add_log(
             f"进入平票PK环节。PK玩家：{candidates_str}。请依次发表PK发言。",
             log_type="broadcast",
+            data=self.build_event_data(
+                "day_pk_speech_started",
+                pk_candidate_ids=list(pk_candidates),
+                pk_round=self.game.pk_round,
+                speaking_order=list(pk_candidates),
+                current_speaker_id=pk_candidates[0],
+                next_phase_hint=GamePhase.DAY_PK_VOTE.value,
+            ),
         )
 
-        self.game.speaking_order = pk_candidates
-        self.game.current_speaker_index = 0
-
-        for pid in pk_candidates:
-            player = self.find_player(pid)
-            if player:
-                player.has_acted = False
+        self.prime_speaking_window(pk_candidates, participant_ids=pk_candidates)
 
     def process_action(self, action: ActionRequest) -> bool:
         if not self.is_current_speaker(action.player_id):
@@ -35,19 +37,48 @@ class DayPKSpeechHandler(PhaseHandler):
         if not player:
             return False
 
+        speaker_index = self.game.current_speaker_index
+
         if action.type == ActionType.SPEECH:
+            player.has_acted = True
+            self.advance_speaker()
+            next_speaker = self.activate_current_speaker()
             self.add_log(
                 f"{player.id}号(PK发言): {action.content}",
                 player_id=player.id,
                 log_type="speech",
+                data=self.build_event_data(
+                    "day_pk_speech",
+                    action="speech",
+                    speaker_id=player.id,
+                    speaker_index=speaker_index,
+                    pk_candidate_ids=list(self.game.pk_candidates),
+                    speaking_order=list(self.game.speaking_order),
+                    next_speaker_id=next_speaker.id if next_speaker else None,
+                    next_phase_hint=GamePhase.DAY_PK_VOTE.value,
+                ),
             )
-            player.has_acted = True
-            self.advance_speaker()
             return True
 
-        if action.type == ActionType.CONFIRM:
+        if action.type in (ActionType.CONFIRM, ActionType.PASS):
             player.has_acted = True
             self.advance_speaker()
+            next_speaker = self.activate_current_speaker()
+            self.add_log(
+                f"{player.id}号结束PK发言。",
+                player_id=player.id,
+                log_type="action",
+                data=self.build_event_data(
+                    "day_pk_speech_turn_end",
+                    action=action.type.value,
+                    speaker_id=player.id,
+                    speaker_index=speaker_index,
+                    pk_candidate_ids=list(self.game.pk_candidates),
+                    speaking_order=list(self.game.speaking_order),
+                    next_speaker_id=next_speaker.id if next_speaker else None,
+                    next_phase_hint=GamePhase.DAY_PK_VOTE.value,
+                ),
+            )
             return True
 
         return False

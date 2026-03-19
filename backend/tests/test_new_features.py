@@ -74,6 +74,7 @@ def test_double_wolf_self_explode():
     game.sheriff_candidate_ids = [1, 2, 3]
     game.players[0].role = Role.WOLF # Player 1 is wolf
     game.election_explode_count = 1 # Already one explosion
+    game.election_wolf_candidates = [1, 2]
     
     handler = SheriffSpeechHandler(gm, game)
     handler.on_enter()

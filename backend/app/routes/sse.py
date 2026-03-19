@@ -1,46 +1,86 @@
-from fastapi import APIRouter, Request, Query
-from sse_starlette.sse import EventSourceResponse
-from app.core.event_manager import event_manager
-import logging
 import asyncio
-import json
+import logging
+
+from fastapi import APIRouter, Header, HTTPException, Query, Request
+from sse_starlette.sse import EventSourceResponse
+
+from app.core.event_manager import event_manager
+from app.core.game_manager import game_manager
+from app.interfaces.presenters.event_presenter import EventPresenter
+from app.security import PLAYER_TOKEN_HEADER
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+event_presenter = EventPresenter()
+
 
 @router.get("/events")
-async def sse_endpoint(request: Request, player_id: int = Query(0)):
+async def sse_endpoint(
+    request: Request,
+    session_id: str = Query(...),
+    viewer_id: int | None = Query(default=None),
+    player_id: int | None = Query(default=None),
+    x_player_token: str | None = Header(default=None, alias=PLAYER_TOKEN_HEADER),
+):
     """
     SSE endpoint for game events.
-    player_id=0 indicates an observer or public view.
+
+    - `session_id` 必填，避免跨局串流。
+    - `viewer_id` 为新参数。
+    - `player_id` 仅作为旧参数兼容别名使用。
     """
-    logger.info(f"Client connected to SSE: player_id={player_id}")
-    queue = await event_manager.create_sse_queue(player_id)
-    
+    game = game_manager.get_game(session_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    authenticated_viewer_id = game_manager.authenticate_player(session_id, x_player_token)
+    if x_player_token is not None and authenticated_viewer_id is None:
+        raise HTTPException(status_code=403, detail="玩家认证失败")
+
+    requested_viewer_id = viewer_id if viewer_id is not None else player_id
+    if requested_viewer_id is None:
+        resolved_viewer_id = authenticated_viewer_id or 0
+    elif requested_viewer_id == 0:
+        resolved_viewer_id = 0
+    else:
+        if authenticated_viewer_id != requested_viewer_id:
+            raise HTTPException(status_code=403, detail="玩家认证失败")
+        resolved_viewer_id = requested_viewer_id
+
+    logger.info(
+        "Client connected to SSE: session_id=%s viewer_id=%s",
+        session_id,
+        resolved_viewer_id,
+    )
+    queue = await event_manager.create_sse_queue(session_id, resolved_viewer_id)
+
     async def event_generator():
         try:
             while True:
-                # Check for disconnection
                 if await request.is_disconnected():
-                    logger.info(f"Client disconnected: player_id={player_id}")
+                    logger.info(
+                        "Client disconnected from SSE: session_id=%s viewer_id=%s",
+                        session_id,
+                        resolved_viewer_id,
+                    )
                     break
-                
+
                 try:
-                    # Wait for event with timeout to allow checking disconnection
                     event = await asyncio.wait_for(queue.get(), timeout=1.0)
-                    
-                    # Format event for SSE
-                    yield {
-                        "event": event.event_type,
-                        "data": json.dumps(event.data)
-                    }
+                    yield event_presenter.to_sse(
+                        event,
+                        session_id=session_id,
+                        viewer_id=resolved_viewer_id,
+                    )
                 except asyncio.TimeoutError:
-                    # Send keep-alive comment
                     yield {"comment": "keep-alive"}
-                    
         except asyncio.CancelledError:
-            logger.info(f"SSE stream cancelled: player_id={player_id}")
+            logger.info(
+                "SSE stream cancelled: session_id=%s viewer_id=%s",
+                session_id,
+                resolved_viewer_id,
+            )
         finally:
-            event_manager.remove_sse_queue(player_id)
-            
+            event_manager.remove_sse_queue(session_id, resolved_viewer_id, queue)
+
     return EventSourceResponse(event_generator())

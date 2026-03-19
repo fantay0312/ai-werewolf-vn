@@ -2,7 +2,7 @@ import uuid
 import logging
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Tuple
-from app.models.game_state import GameState, GamePhase, GameLog, Player, Role, ActionType
+from app.models.game_state import DeathCause, GameState, GamePhase, GameLog, Player, Role, ActionType
 from app.models.action_model import ActionRequest
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,17 @@ class PhaseHandler(ABC):
         p = self.find_player(player_id)
         return p if p and p.is_alive else None
 
+    def is_alive_target(self, target_id: Optional[int]) -> bool:
+        """Return True when target_id points to an alive player."""
+        return target_id is not None and self.find_alive_player(target_id) is not None
+
+    def alive_wolf_count(self) -> int:
+        """Get the number of alive wolves after current deaths are applied."""
+        return len([
+            p for p in self.game.players
+            if p.is_alive and p.role in (Role.WOLF, Role.WOLF_KING)
+        ])
+
     def add_log(self, content: str, *, player_id: Optional[int] = None,
                 is_public: bool = True, log_type: str = "normal",
                 data: Optional[Dict] = None) -> GameLog:
@@ -66,6 +77,16 @@ class PhaseHandler(ABC):
         )
         self.game.game_logs.append(log)
         return log
+
+    def build_event_data(self, event: str, **fields) -> Dict:
+        """Build structured event data for replay and AI extraction."""
+        data = {
+            "event": event,
+            "phase": self.game.phase.value,
+            "day": self.game.day,
+        }
+        data.update(fields)
+        return data
 
     def reset_actions(self, predicate=None):
         """Reset has_acted for players matching predicate. Defaults to all alive."""
@@ -167,13 +188,53 @@ class PhaseHandler(ABC):
         """Advance the current speaker index."""
         self.game.current_speaker_index += 1
 
+    def advance_speaker_to_valid(self, valid_speaker_ids: Optional[List[int]] = None):
+        """Advance speaker pointer and skip speakers not in valid_speaker_ids."""
+        self.game.current_speaker_index += 1
+        if valid_speaker_ids is None:
+            return
+
+        valid_ids = set(valid_speaker_ids)
+        while (
+            self.game.current_speaker_index < len(self.game.speaking_order)
+            and self.game.speaking_order[self.game.current_speaker_index] not in valid_ids
+        ):
+            self.game.current_speaker_index += 1
+
+    def current_speaker_id(self) -> Optional[int]:
+        """Return current speaker ID if speaking window is active."""
+        if not self.game.speaking_order:
+            return None
+        if self.game.current_speaker_index >= len(self.game.speaking_order):
+            return None
+        return self.game.speaking_order[self.game.current_speaker_index]
+
+    def activate_current_speaker(self) -> Optional[Player]:
+        """Mark the current speaker as pending for turn-based speech phases."""
+        current_speaker_id = self.current_speaker_id()
+        if current_speaker_id is None:
+            return None
+
+        player = self.find_player(current_speaker_id)
+        if player:
+            player.has_acted = False
+        return player
+
+    def prime_speaking_window(self, order: List[int], participant_ids: Optional[List[int]] = None):
+        """Initialize a strict speaking window where only the current speaker is pending."""
+        self.game.speaking_order = list(order)
+        self.game.current_speaker_index = 0
+
+        active_ids = set(participant_ids if participant_ids is not None else order)
+        for player in self.game.players:
+            if player.id in active_ids:
+                player.has_acted = True
+
+        self.activate_current_speaker()
+
     def is_current_speaker(self, player_id: int) -> bool:
         """Check if a player is the current speaker."""
-        if not self.game.speaking_order:
-            return False
-        if self.game.current_speaker_index >= len(self.game.speaking_order):
-            return False
-        return self.game.speaking_order[self.game.current_speaker_index] == player_id
+        return self.current_speaker_id() == player_id
 
     def all_speakers_done(self) -> bool:
         """Check if all speakers have finished."""
@@ -192,7 +253,7 @@ class PhaseHandler(ABC):
 
         # Check Hunter/Wolf King shooting
         if player.role in (Role.HUNTER, Role.WOLF_KING):
-            if Rules.can_shoot(player, "vote"):
+            if Rules.can_shoot(player, player.death_cause, alive_wolves=self.alive_wolf_count()):
                 self.game.next_phase_after_skill = return_phase
                 return GamePhase.HUNTER_SKILL
 

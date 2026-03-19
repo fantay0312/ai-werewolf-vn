@@ -32,6 +32,7 @@ export type Role =
   | 'witch'
   | 'guard'
   | 'hunter'
+  | 'unknown'
 
 export type Camp = 'good' | 'wolf'
 
@@ -131,6 +132,13 @@ export interface GameState {
   wolf_discuss_messages?: WolfDiscussMessage[]
 }
 
+export type GameStateView = GameState
+
+export interface CreateGameResponse {
+  player_token: string
+  state: GameStateView
+}
+
 export interface ActionRequest {
   player_id: number
   type: ActionType
@@ -147,7 +155,8 @@ export const ROLE_NAMES: Record<Role, string> = {
   seer: '预言家',
   witch: '女巫',
   guard: '守卫',
-  hunter: '猎人'
+  hunter: '猎人',
+  unknown: '未知'
 }
 
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
@@ -157,7 +166,8 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   seer: '预言家：每晚可查验一名玩家的身份（好人/坏人）。',
   witch: '女巫：拥有一瓶解药和一瓶毒药，每晚只能使用一瓶。',
   guard: '守卫：每晚可守护一名玩家免受狼人击杀，不可连续守护同一人。',
-  hunter: '猎人：出局时可开枪带走一人（被毒除外）。'
+  hunter: '猎人：出局时可开枪带走一人（被毒除外）。',
+  unknown: '未知角色：该身份在当前视角下不可见。'
 }
 
 export const PHASE_NAMES: Record<GamePhase, string> = {

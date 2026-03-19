@@ -56,6 +56,7 @@ class Player(BaseModel):
     is_alive: bool = True
     is_sheriff: bool = False
     has_acted: bool = False  # Current phase action status
+    death_cause: Optional[DeathCause] = None
 
     # Skill status
     poison_used: bool = False
@@ -144,6 +145,7 @@ class GameState(BaseModel):
     next_phase_after_skill: Optional[GamePhase] = None  # Where to return after death skills
     wolf_discuss_round: int = 0
     wolf_discuss_messages: List[WolfDiscussMessage] = []
+    wolf_revote_resolver_id: Optional[int] = None
 
     # Discussion Status
     speaking_order: List[int] = []

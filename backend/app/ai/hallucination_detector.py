@@ -52,35 +52,33 @@ class HallucinationDetector:
                  issues.append(f"Target {target} is not alive")
 
         # 3. Permission/Logic Check (Basic)
-        if action_type == "wolf_kill":
+        if action_type == "kill":
             if fact_layer.my_role not in [Role.WOLF, Role.WOLF_KING]:
-                issues.append(f"Role {fact_layer.my_role} cannot perform wolf_kill")
-            if target in fact_layer.wolf_teammates:
-                issues.append("Cannot kill wolf teammate")
+                issues.append(f"Role {fact_layer.my_role} cannot perform kill")
                 
-        elif action_type == "seer_check":
+        elif action_type == "check":
             if fact_layer.my_role != Role.SEER:
-                issues.append(f"Role {fact_layer.my_role} cannot perform seer_check")
+                issues.append(f"Role {fact_layer.my_role} cannot perform check")
             # Check if already checked
             for res in fact_layer.skill_status.check_results:
                 if res.target_id == target:
                     issues.append(f"Already checked player {target}")
 
-        elif action_type == "witch_save":
+        elif action_type == "save":
             if fact_layer.my_role != Role.WITCH:
-                issues.append(f"Role {fact_layer.my_role} cannot perform witch_save")
+                issues.append(f"Role {fact_layer.my_role} cannot perform save")
             if not fact_layer.skill_status.has_antidote:
                 issues.append("Antidote already used")
 
-        elif action_type == "witch_poison":
+        elif action_type == "poison":
             if fact_layer.my_role != Role.WITCH:
-                issues.append(f"Role {fact_layer.my_role} cannot perform witch_poison")
+                issues.append(f"Role {fact_layer.my_role} cannot perform poison")
             if not fact_layer.skill_status.has_poison:
                 issues.append("Poison already used")
                 
-        elif action_type == "guard_protect":
+        elif action_type == "guard":
             if fact_layer.my_role != Role.GUARD:
-                issues.append(f"Role {fact_layer.my_role} cannot perform guard_protect")
+                issues.append(f"Role {fact_layer.my_role} cannot perform guard")
             if fact_layer.skill_status.last_guard_target == target and target is not None:
                 issues.append(f"Cannot guard {target} consecutively")
 

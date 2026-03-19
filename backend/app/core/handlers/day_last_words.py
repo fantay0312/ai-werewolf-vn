@@ -8,23 +8,25 @@ class DayLastWordsHandler(PhaseHandler):
         return GamePhase.DAY_LAST_WORDS
 
     def on_enter(self):
-        self.eligible_speakers = self.game.dead_players
+        self.eligible_speakers = sorted(self.game.dead_players)
 
         if not self.eligible_speakers:
             self.game.speaking_order = []
             return
 
-        self.eligible_speakers.sort()
-        self.game.speaking_order = self.eligible_speakers
-        self.game.current_speaker_index = 0
-
-        for pid in self.eligible_speakers:
-            player = self.find_player(pid)
-            if player:
-                player.has_acted = False
+        self.prime_speaking_window(self.eligible_speakers, participant_ids=self.eligible_speakers)
 
         speaker_str = ", ".join([f"{pid}号" for pid in self.eligible_speakers])
-        self.add_log(f"请发表遗言。发言顺序：{speaker_str}")
+        self.add_log(
+            f"请发表遗言。发言顺序：{speaker_str}",
+            data=self.build_event_data(
+                "day_last_words_started",
+                eligible_speaker_ids=list(self.eligible_speakers),
+                speaking_order=list(self.game.speaking_order),
+                current_speaker_id=self.current_speaker_id(),
+                next_phase_hint=GamePhase.SHERIFF_ELECTION.value,
+            ),
+        )
 
     def process_action(self, action: ActionRequest) -> bool:
         if not self.is_current_speaker(action.player_id):
@@ -34,19 +36,46 @@ class DayLastWordsHandler(PhaseHandler):
         if not player:
             return False
 
+        speaker_index = self.game.current_speaker_index
+
         if action.type == ActionType.SPEECH:
+            player.has_acted = True
+            self.advance_speaker()
+            next_speaker = self.activate_current_speaker()
             self.add_log(
                 f"{player.id}号(遗言): {action.content}",
                 player_id=player.id,
                 log_type="speech",
+                data=self.build_event_data(
+                    "day_last_words_speech",
+                    action="speech",
+                    speaker_id=player.id,
+                    speaker_index=speaker_index,
+                    speaking_order=list(self.game.speaking_order),
+                    next_speaker_id=next_speaker.id if next_speaker else None,
+                    next_phase_hint=GamePhase.SHERIFF_ELECTION.value,
+                ),
             )
-            player.has_acted = True
-            self.advance_speaker()
             return True
 
         if action.type in (ActionType.CONFIRM, ActionType.PASS):
             player.has_acted = True
             self.advance_speaker()
+            next_speaker = self.activate_current_speaker()
+            self.add_log(
+                f"{player.id}号结束遗言。",
+                player_id=player.id,
+                log_type="action",
+                data=self.build_event_data(
+                    "day_last_words_turn_end",
+                    action=action.type.value,
+                    speaker_id=player.id,
+                    speaker_index=speaker_index,
+                    speaking_order=list(self.game.speaking_order),
+                    next_speaker_id=next_speaker.id if next_speaker else None,
+                    next_phase_hint=GamePhase.SHERIFF_ELECTION.value,
+                ),
+            )
             return True
 
         return False

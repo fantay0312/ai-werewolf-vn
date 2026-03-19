@@ -5,6 +5,7 @@ AI狼人杀游戏配置管理模块
 """
 
 import os
+from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from enum import Enum
@@ -195,10 +196,30 @@ class ServerConfig:
     allowed_origins: List[str] = field(default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"])
     game_cleanup_interval: int = 300       # 游戏清理间隔（秒）
     game_expire_time: int = 3600           # 游戏过期时间（秒）
+    max_games: int = 100
+    persist_games: bool = False
+    snapshot_dir: str = "data/game_snapshots"
+    rate_limit_enabled: bool = True
+    rate_limit_window_seconds: int = 60
+    rate_limit_create_game: int = 30
+    rate_limit_player_action: int = 180
+    rate_limit_admin: int = 60
+    metrics_enabled: bool = True
+    metrics_require_admin: bool = True
 
     @classmethod
-    def from_env(cls) -> "ServerConfig":
+    def from_env(cls, env: Environment | None = None) -> "ServerConfig":
         """从环境变量加载配置"""
+        if env is None:
+            env_str = os.getenv("ENV", "development").lower()
+            resolved_env = Environment(env_str) if env_str in [e.value for e in Environment] else Environment.DEVELOPMENT
+        else:
+            resolved_env = env
+        default_snapshot_dir = str(
+            Path(__file__).resolve().parents[2] / "data" / "game_snapshots"
+        )
+        persist_default = "true" if resolved_env == Environment.PRODUCTION else "false"
+        rate_limit_default = "false" if resolved_env == Environment.TEST else "true"
         return cls(
             host=os.getenv("HOST", "0.0.0.0"),
             port=int(os.getenv("PORT", "8000")),
@@ -207,7 +228,17 @@ class ServerConfig:
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             allowed_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(","),
             game_cleanup_interval=int(os.getenv("GAME_CLEANUP_INTERVAL", "300")),
-            game_expire_time=int(os.getenv("GAME_EXPIRE_TIME", "3600"))
+            game_expire_time=int(os.getenv("GAME_EXPIRE_TIME", "3600")),
+            max_games=int(os.getenv("MAX_GAMES", "100")),
+            persist_games=os.getenv("PERSIST_GAMES", persist_default).lower() == "true",
+            snapshot_dir=os.getenv("GAME_SNAPSHOT_DIR", default_snapshot_dir),
+            rate_limit_enabled=os.getenv("RATE_LIMIT_ENABLED", rate_limit_default).lower() == "true",
+            rate_limit_window_seconds=int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")),
+            rate_limit_create_game=int(os.getenv("RATE_LIMIT_CREATE_GAME", "30")),
+            rate_limit_player_action=int(os.getenv("RATE_LIMIT_PLAYER_ACTION", "180")),
+            rate_limit_admin=int(os.getenv("RATE_LIMIT_ADMIN", "60")),
+            metrics_enabled=os.getenv("METRICS_ENABLED", "true").lower() == "true",
+            metrics_require_admin=os.getenv("METRICS_REQUIRE_ADMIN", "true").lower() == "true",
         )
 
 
@@ -235,7 +266,7 @@ class Config:
             phase_times=PhaseTimeConfig(),
             memory=MemoryConfig(),
             rules=GameRulesConfig(),
-            server=ServerConfig.from_env()
+            server=ServerConfig.from_env(env)
         )
 
 
@@ -309,3 +340,8 @@ def get_rules() -> GameRulesConfig:
 def get_memory_config() -> MemoryConfig:
     """获取记忆系统配置"""
     return get_config().memory
+
+
+def get_server_config() -> ServerConfig:
+    """获取服务端配置"""
+    return get_config().server

@@ -8,7 +8,22 @@ class NightSeerHandler(PhaseHandler):
         return GamePhase.NIGHT_SEER
 
     def on_enter(self):
-        self.add_log("预言家请查验身份。", is_public=False)
+        seer = self.find_role_player(Role.SEER)
+        allowed_target_ids = [p.id for p in self.game.players if p.is_alive]
+        self.add_log(
+            "预言家请查验身份。",
+            player_id=seer.id if seer else None,
+            is_public=False,
+            log_type="action",
+            data=self.build_event_data(
+                "seer_prompted",
+                action="prompt",
+                seer_id=seer.id if seer else None,
+                seer_alive=bool(seer and seer.is_alive),
+                allowed_target_ids=allowed_target_ids,
+                next_phase_hint=GamePhase.NIGHT_WITCH.value,
+            ),
+        )
         self.reset_actions(lambda p: p.role == Role.SEER)
 
     def process_action(self, action: ActionRequest) -> bool:
@@ -30,7 +45,18 @@ class NightSeerHandler(PhaseHandler):
                 f"查验结果：{target.id}号是 {result_text}",
                 player_id=player.id,
                 is_public=False,
-                data={"action": "seer_check", "target_id": target.id, "result": "good" if is_good else "bad"},
+                log_type="action",
+                data=self.build_event_data(
+                    "seer_checked",
+                    action="seer_check",
+                    actor_id=player.id,
+                    target_id=target.id,
+                    target_valid=True,
+                    target_alive=True,
+                    result="good" if is_good else "bad",
+                    result_text=result_text,
+                    next_phase_hint=GamePhase.NIGHT_WITCH.value,
+                ),
             )
             target.checked_by_seer = True
             player.has_acted = True
@@ -38,6 +64,18 @@ class NightSeerHandler(PhaseHandler):
 
         if action.type == ActionType.PASS:
             player.has_acted = True
+            self.add_log(
+                "预言家选择今晚不查验。",
+                player_id=player.id,
+                is_public=False,
+                log_type="action",
+                data=self.build_event_data(
+                    "seer_passed",
+                    action="pass",
+                    actor_id=player.id,
+                    next_phase_hint=GamePhase.NIGHT_WITCH.value,
+                ),
+            )
             return True
 
         return False

@@ -1,19 +1,16 @@
 from fastapi.testclient import TestClient
 from main import app
 from app.models.game_state import GamePhase, ActionType
+from .helpers import create_game_session, get_human_player, get_state
 
 client = TestClient(app)
 
 def test_phase_transition():
-    # Create game
-    response = client.post("/api/game/create")
-    assert response.status_code == 200
-    data = response.json()
-    session_id = data["session_id"]
-    player_id = next(p["id"] for p in data["players"] if p["is_human"])
+    _, state, session_id, headers = create_game_session(client)
+    player_id = get_human_player(state)["id"]
 
     # Initial phase should be GAME_START
-    assert data["phase"] == GamePhase.GAME_START
+    assert state["phase"] == GamePhase.GAME_START
 
     # Confirm to advance
     action = {
@@ -21,17 +18,17 @@ def test_phase_transition():
         "type": ActionType.CONFIRM,
         "timestamp": 0
     }
-    response = client.post(f"/api/player/{session_id}/action", json=action)
+    response = client.post(f"/api/player/{session_id}/action", headers=headers, json=action)
     assert response.status_code == 200
 
     # Check game state - should have advanced to a night phase
     # AI agents without LLM_API_KEY will use fallback PASS actions
     # so phases may advance quickly
-    response = client.get(f"/api/game/{session_id}")
-    data = response.json()
+    data = get_state(client, session_id, headers)
 
     # Game should be in one of the night phases
     night_phases = [
+        GamePhase.SHERIFF_ELECTION,
         GamePhase.NIGHT_START,
         GamePhase.NIGHT_WOLF_DISCUSS,
         GamePhase.NIGHT_WOLF_VOTE,

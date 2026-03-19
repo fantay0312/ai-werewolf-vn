@@ -66,3 +66,9 @@ test_output.txt
 
 # Claude/Agent artifacts
 .claude/
+.ai_state/
+
+# Local secret scratch files
+rule/
+rule/key.md
+frontend-vue/
