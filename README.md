@@ -65,6 +65,7 @@ cp .env.example .env
 LLM_API_BASE=https://api.openai.com/v1   # 或其他兼容网关
 LLM_API_KEY=sk-your-api-key-here
 LLM_MODEL=gpt-4o                          # 建议使用推理能力强的模型
+ADMIN_TOKEN=一串足够长的随机字符串          # 保护 /api/config 管理接口（compose 必填）
 ```
 
 ### 3. 启动

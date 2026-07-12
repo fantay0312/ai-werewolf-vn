@@ -4,12 +4,16 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - ENVIRONMENT=production
       - LLM_API_KEY=${LLM_API_KEY}
       - LLM_API_BASE=${LLM_API_BASE}
       - LLM_MODEL=${LLM_MODEL}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:?set ADMIN_TOKEN in .env to protect the config API}
+      - PERSIST_GAMES=true
+      - GAME_SNAPSHOT_DIR=/data/game_snapshots
       - ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://localhost:3000
     volumes:
-      - ./backend:/app
+      - werewolf-data:/data
     restart: always
     networks:
       - werewolf-net
@@ -27,3 +31,6 @@ services:
 networks:
   werewolf-net:
     driver: bridge
+
+volumes:
+  werewolf-data:
