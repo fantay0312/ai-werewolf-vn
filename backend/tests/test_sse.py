@@ -6,15 +6,17 @@ from fastapi.testclient import TestClient
 from sse_starlette.sse import EventSourceResponse
 from starlette.requests import Request
 
-from app.core.event_manager import EventManager, event_manager
+from app.config import Environment, ServerConfig
+from app.core.event_manager import SSE_QUEUE_CLOSED, EventManager, event_manager
 from app.core.game_manager import game_manager
 from app.domain.events.base import DomainEvent, VisibilityScope
+from app.domain.events.gameplay import player_action_received
 from app.interfaces.presenters.event_presenter import EventPresenter
 from app.infrastructure.runtime_metrics import runtime_metrics
 from app.infrastructure.sse_ticket_store import SSETicketStore, sse_ticket_store
 from app.models.events import GameEvent
-from app.models.game_state import GamePhase
-from app.routes.sse import sse_endpoint
+from app.models.game_state import ActionType, GamePhase, GameState, Player, Role
+from app.routes.sse import heartbeat_sse_frame, sse_endpoint
 from main import app
 
 
@@ -71,12 +73,13 @@ def test_event_manager_isolates_sessions_for_public_events():
     asyncio.run(runner())
 
 
-def test_event_manager_routes_private_domain_event_only_to_target_viewer():
+def test_event_manager_routes_private_domain_event_only_to_actor_viewer():
     presenter = EventPresenter()
 
     async def runner():
         public_queue = await event_manager.create_sse_queue("session-private", 0)
-        private_queue = await event_manager.create_sse_queue("session-private", 7)
+        actor_queue = await event_manager.create_sse_queue("session-private", 7)
+        target_queue = await event_manager.create_sse_queue("session-private", 8)
 
         event = DomainEvent(
             name="player_action_received",
@@ -86,11 +89,12 @@ def test_event_manager_routes_private_domain_event_only_to_target_viewer():
             payload={"action_type": "kill", "note": "secret"},
             visibility=VisibilityScope.PRIVATE,
             actor_id=7,
+            target_id=8,
         )
 
         await event_manager.publish(event)
 
-        received = await asyncio.wait_for(private_queue.get(), timeout=0.2)
+        received = await asyncio.wait_for(actor_queue.get(), timeout=0.2)
         presented = presenter.present(received, viewer_id=7)
         assert presented["event_type"] == "player_action_received"
         assert presented["visibility"] == "private"
@@ -98,8 +102,50 @@ def test_event_manager_routes_private_domain_event_only_to_target_viewer():
 
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(public_queue.get(), timeout=0.1)
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(target_queue.get(), timeout=0.1)
 
     asyncio.run(runner())
+
+
+def test_player_action_event_marks_night_and_live_vote_actions_actor_private():
+    game = GameState(
+        session_id="covert-actions",
+        day=1,
+        phase=GamePhase.NIGHT_WOLF_VOTE,
+        players=[
+            Player(id=1, name="Wolf", role=Role.WOLF, portrait=""),
+            Player(id=2, name="Villager", role=Role.VILLAGER, portrait=""),
+        ],
+    )
+
+    night_event = player_action_received(
+        game,
+        actor_id=1,
+        action_type=ActionType.KILL,
+        target_id=2,
+        source="ai",
+    )
+    game.phase = GamePhase.DAY_VOTE
+    vote_event = player_action_received(
+        game,
+        actor_id=2,
+        action_type=ActionType.VOTE,
+        target_id=1,
+        source="human",
+    )
+    game.phase = GamePhase.DAY_DISCUSS
+    speech_event = player_action_received(
+        game,
+        actor_id=2,
+        action_type=ActionType.SPEECH,
+        target_id=None,
+        source="human",
+    )
+
+    assert night_event.visibility == VisibilityScope.PRIVATE
+    assert vote_event.visibility == VisibilityScope.PRIVATE
+    assert speech_event.visibility == VisibilityScope.PUBLIC
 
 
 def test_sse_queue_is_bounded_and_drops_oldest(caplog):
@@ -121,6 +167,41 @@ def test_sse_queue_is_bounded_and_drops_oldest(caplog):
 
     assert "Dropped oldest SSE event" in caplog.text
     assert 'sse_events_dropped_total{reason="queue_full"} 1' in runtime_metrics.to_prometheus_text()
+
+
+def test_sse_queue_cap_evicts_and_closes_oldest_viewer_stream():
+    manager = EventManager(queue_capacity=2)
+
+    async def runner():
+        first = await manager.create_sse_queue("viewer-cap", 7)
+        second = await manager.create_sse_queue("viewer-cap", 7)
+        third = await manager.create_sse_queue("viewer-cap", 7)
+
+        assert first.get_nowait() is SSE_QUEUE_CLOSED
+        await manager.publish(GameEvent(
+            event_type="state_update",
+            data={"session_id": "viewer-cap"},
+        ))
+        assert (await second.get()).event_type == "state_update"
+        assert (await third.get()).event_type == "state_update"
+
+    asyncio.run(runner())
+
+
+def test_sse_heartbeat_is_a_browser_visible_data_event():
+    frame = heartbeat_sse_frame()
+
+    assert "comment" not in frame
+    assert '"event_type": "heartbeat"' in frame["data"]
+    assert '"schema": "system"' in frame["data"]
+
+
+def test_sse_heartbeat_interval_defaults_and_reads_environment(monkeypatch):
+    monkeypatch.delenv("SSE_HEARTBEAT_SECONDS", raising=False)
+    assert ServerConfig.from_env(Environment.TEST).sse_heartbeat_seconds == 15
+
+    monkeypatch.setenv("SSE_HEARTBEAT_SECONDS", "9")
+    assert ServerConfig.from_env(Environment.TEST).sse_heartbeat_seconds == 9
 
 
 def test_sse_ticket_ttl_is_capped_at_sixty_seconds():

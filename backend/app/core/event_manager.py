@@ -13,6 +13,15 @@ logger = logging.getLogger(__name__)
 
 SessionViewerKey = tuple[str, int]
 EventEnvelope = GameEvent | DomainEvent
+MAX_SSE_QUEUES_PER_VIEWER = 2
+
+
+class SSEQueueClosed:
+    """Sentinel instructing an evicted SSE generator to terminate."""
+
+
+SSE_QUEUE_CLOSED = SSEQueueClosed()
+QueueEnvelope = EventEnvelope | SSEQueueClosed
 
 
 class EventManager:
@@ -20,7 +29,7 @@ class EventManager:
 
     def __init__(self, queue_capacity: int | None = None):
         self._subscribers: dict[str, list[Callable[..., Any]]] = {}
-        self._sse_queues: dict[SessionViewerKey, set[asyncio.Queue[EventEnvelope]]] = defaultdict(set)
+        self._sse_queues: dict[SessionViewerKey, list[asyncio.Queue[QueueEnvelope]]] = defaultdict(list)
         self._queue_capacity = queue_capacity
         self._dropped_events = 0
 
@@ -81,20 +90,35 @@ class EventManager:
         """向某局内所有 SSE 视角广播事件。"""
         await self.publish(event, session_id=session_id, exclude_viewers=exclude_players)
 
-    async def create_sse_queue(self, session_id: str, viewer_id: int = 0) -> asyncio.Queue[EventEnvelope]:
+    async def create_sse_queue(self, session_id: str, viewer_id: int = 0) -> asyncio.Queue[QueueEnvelope]:
         """为某局、某视角创建独立 SSE 队列。"""
         configured_capacity = (
             self._queue_capacity
             if self._queue_capacity is not None
             else get_server_config().sse_queue_capacity
         )
-        queue: asyncio.Queue[EventEnvelope] = asyncio.Queue(maxsize=max(1, configured_capacity))
-        self._sse_queues[(session_id, viewer_id)].add(queue)
+        queue: asyncio.Queue[QueueEnvelope] = asyncio.Queue(maxsize=max(1, configured_capacity))
+        key = (session_id, viewer_id)
+        queues = self._sse_queues[key]
+        if len(queues) >= MAX_SSE_QUEUES_PER_VIEWER:
+            evicted = queues.pop(0)
+            self._close_queue(evicted)
+            runtime_metrics.record_business_counter(
+                "sse_queues_evicted_total",
+                labels={"reason": "viewer_cap"},
+                help_text="Total SSE queues evicted by per-viewer connection cap",
+            )
+            logger.warning(
+                "Evicted oldest SSE queue for session %s viewer %s",
+                session_id,
+                viewer_id,
+            )
+        queues.append(queue)
         return queue
 
     def _put_with_backpressure(
         self,
-        queue: asyncio.Queue[EventEnvelope],
+        queue: asyncio.Queue[QueueEnvelope],
         event: EventEnvelope,
         session_id: str,
     ) -> None:
@@ -117,7 +141,7 @@ class EventManager:
         self,
         session_id: str,
         viewer_id: int,
-        queue: asyncio.Queue[EventEnvelope] | None = None,
+        queue: asyncio.Queue[QueueEnvelope] | None = None,
     ) -> None:
         """移除 SSE 队列。"""
         key = (session_id, viewer_id)
@@ -129,9 +153,15 @@ class EventManager:
             self._sse_queues.pop(key, None)
             return
 
-        queues.discard(queue)
+        if queue in queues:
+            queues.remove(queue)
         if not queues:
             self._sse_queues.pop(key, None)
+
+    def _close_queue(self, queue: asyncio.Queue[QueueEnvelope]) -> None:
+        if queue.full():
+            queue.get_nowait()
+        queue.put_nowait(SSE_QUEUE_CLOSED)
 
     async def _notify_subscribers(self, event: EventEnvelope) -> None:
         event_name = self._event_name(event)
@@ -194,12 +224,7 @@ class EventManager:
             return None
 
         if event.visibility == VisibilityScope.PRIVATE:
-            viewers: list[int] = []
-            if event.actor_id is not None:
-                viewers.append(event.actor_id)
-            if isinstance(event.target_id, int):
-                viewers.append(event.target_id)
-            return list(dict.fromkeys(viewers))
+            return [event.actor_id] if event.actor_id is not None else []
 
         if event.visibility == VisibilityScope.WOLF_TEAM:
             wolf_ids = event.payload.get("wolf_ids")
@@ -234,9 +259,9 @@ class EventManager:
         *,
         viewer_ids: list[int] | None,
         exclude_viewers: list[int] | None,
-    ) -> list[asyncio.Queue[EventEnvelope]]:
+    ) -> list[asyncio.Queue[QueueEnvelope]]:
         excluded = set(exclude_viewers or [])
-        queues: set[asyncio.Queue[EventEnvelope]] = set()
+        queues: set[asyncio.Queue[QueueEnvelope]] = set()
 
         if viewer_ids is None:
             for (active_session, active_viewer), active_queues in self._sse_queues.items():
@@ -248,7 +273,7 @@ class EventManager:
         for target_viewer in viewer_ids:
             if target_viewer in excluded:
                 continue
-            queues.update(self._sse_queues.get((session_id, target_viewer), set()))
+            queues.update(self._sse_queues.get((session_id, target_viewer), []))
         return list(queues)
 
 

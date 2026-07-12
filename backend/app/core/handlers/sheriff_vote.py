@@ -95,6 +95,15 @@ class SheriffVoteHandler(PhaseHandler):
         vote_counts = Counter([t for t in self.game.votes.values() if t != 0])
         votes_snapshot = dict(self.game.votes)
         vote_counts_snapshot = dict(vote_counts)
+        vote_entries = [
+            {
+                "voter_id": voter_id,
+                "target_id": target_id,
+                "target_label": "弃票" if target_id == 0 else f"{target_id}号",
+                "weight": 1,
+            }
+            for voter_id, target_id in sorted(votes_snapshot.items())
+        ]
 
         # Log votes
         content = "警长投票结果：\n"
@@ -108,6 +117,7 @@ class SheriffVoteHandler(PhaseHandler):
                 action="tally",
                 candidate_ids=sorted(self.game.sheriff_candidate_ids),
                 votes=votes_snapshot,
+                vote_entries=vote_entries,
                 vote_counts=vote_counts_snapshot,
                 abstain_voter_ids=sorted(voter_id for voter_id, target_id in votes_snapshot.items() if target_id == 0),
                 abstain_count=sum(1 for target_id in votes_snapshot.values() if target_id == 0),

@@ -5,6 +5,8 @@ from app.config import reload_config
 from app.core.event_manager import event_manager
 from app.core.game_manager import GameManager
 from app.core.handlers.day_last_words import DayLastWordsHandler
+from app.core.handlers.day_vote_result import DayVoteResultHandler
+from app.core.handlers.night_resolve import NightResolveHandler
 from app.infrastructure.event_store import event_store
 from app.infrastructure.game_snapshot_store import GameSnapshotStore
 from app.models.events import GameEndEvent, JudgeBroadcastEvent, PhaseChangeEvent
@@ -91,6 +93,30 @@ def test_last_words_ai_scheduler_returns_only_current_speaker():
     assert manager._get_pending_ai_players(game) == [second]
 
 
+def test_last_words_action_works_with_fresh_handler_and_dead_player_gate():
+    manager = GameManager()
+    victim = _player(1, Role.VILLAGER)
+    victim.is_alive = False
+    game = GameState(
+        session_id="last-words-fresh-handler",
+        day=2,
+        phase=GamePhase.DAY_LAST_WORDS,
+        players=[victim, _player(2, Role.WOLF), _player(3, Role.SEER)],
+        dead_players=[victim.id],
+    )
+    manager.games[game.session_id] = game
+    DayLastWordsHandler(manager, game).on_enter()
+
+    success, error = asyncio.run(manager.process_action(
+        game.session_id,
+        ActionRequest(player_id=victim.id, type=ActionType.SPEECH, content="我的遗言"),
+    ))
+
+    assert success is True, error
+    assert game.phase == GamePhase.DAY_DISCUSS
+    assert any("我的遗言" in log.content for log in game.game_logs)
+
+
 def test_postponed_sheriff_election_runs_after_first_dawn_last_words():
     victim = _player(1, Role.VILLAGER)
     victim.is_alive = False
@@ -175,6 +201,124 @@ def test_decisive_hunter_shot_advances_directly_to_game_end():
     assert success is True
     assert game.winner == "good"
     assert game.phase == GamePhase.GAME_END
+
+
+def test_exiled_hunter_resolves_shot_before_provisional_wolf_win():
+    manager = GameManager()
+    hunter = _player(1, Role.HUNTER)
+    wolf = _player(2, Role.WOLF)
+    villager = _player(3, Role.VILLAGER)
+    game = GameState(
+        session_id="exile-hunter-before-win",
+        day=2,
+        phase=GamePhase.DAY_VOTE,
+        players=[hunter, wolf, villager],
+        votes={hunter.id: hunter.id, wolf.id: hunter.id, villager.id: hunter.id},
+    )
+    manager.games[game.session_id] = game
+
+    asyncio.run(manager._advance_phase(game, GamePhase.DAY_VOTE_RESULT))
+
+    assert game.phase == GamePhase.HUNTER_SKILL
+    assert game.winner is None
+
+    success, error = asyncio.run(manager.process_action(
+        game.session_id,
+        ActionRequest(player_id=hunter.id, type=ActionType.SHOOT, target_id=wolf.id),
+    ))
+    assert success is True, error
+    assert game.phase == GamePhase.GAME_END
+    assert game.winner == "good"
+
+
+def test_vote_result_fresh_handler_recovers_pending_death_skill():
+    manager = GameManager()
+    hunter = _player(1, Role.HUNTER)
+    game = GameState(
+        session_id="fresh-vote-result-handler",
+        day=2,
+        phase=GamePhase.DAY_VOTE_RESULT,
+        players=[hunter, _player(2, Role.WOLF), _player(3, Role.VILLAGER)],
+        votes={1: hunter.id, 2: hunter.id, 3: hunter.id},
+    )
+
+    DayVoteResultHandler(manager, game).on_enter()
+    next_phase = DayVoteResultHandler(manager, game).try_advance()
+
+    assert next_phase == GamePhase.HUNTER_SKILL
+    assert game.winner is None
+
+
+def test_night_killed_hunter_resolves_shot_before_provisional_wolf_win():
+    manager = GameManager()
+    hunter = _player(1, Role.HUNTER)
+    wolf = _player(2, Role.WOLF)
+    villager = _player(3, Role.VILLAGER)
+    hunter.killed_by_wolf = True
+    game = GameState(
+        session_id="night-hunter-before-win",
+        day=1,
+        phase=GamePhase.NIGHT_GUARD,
+        players=[hunter, wolf, villager],
+        wolf_kill_target=hunter.id,
+    )
+    manager.games[game.session_id] = game
+
+    asyncio.run(manager._advance_phase(game, GamePhase.NIGHT_RESOLVE))
+
+    assert game.phase == GamePhase.HUNTER_SKILL
+    assert game.winner is None
+
+    success, error = asyncio.run(manager.process_action(
+        game.session_id,
+        ActionRequest(player_id=hunter.id, type=ActionType.SHOOT, target_id=wolf.id),
+    ))
+    assert success is True, error
+    assert game.phase == GamePhase.GAME_END
+    assert game.winner == "good"
+
+
+def test_night_resolve_fresh_handler_uses_persisted_state_only():
+    manager = GameManager()
+    victim = _player(1, Role.VILLAGER)
+    victim.killed_by_wolf = True
+    game = GameState(
+        session_id="fresh-night-result-handler",
+        day=1,
+        phase=GamePhase.NIGHT_RESOLVE,
+        players=[
+            victim,
+            _player(2, Role.WOLF),
+            _player(3, Role.SEER),
+            _player(4, Role.VILLAGER),
+        ],
+        wolf_kill_target=victim.id,
+    )
+
+    NightResolveHandler(manager, game).on_enter()
+    next_phase = NightResolveHandler(manager, game).try_advance()
+
+    assert next_phase == GamePhase.DAY_START
+
+
+def test_seer_can_pass_through_command_validation():
+    manager = GameManager()
+    seer = _player(1, Role.SEER)
+    game = GameState(
+        session_id="seer-pass",
+        day=1,
+        phase=GamePhase.NIGHT_SEER,
+        players=[seer, _player(2, Role.WOLF), _player(3, Role.VILLAGER)],
+    )
+    manager.games[game.session_id] = game
+
+    success, error = asyncio.run(manager.process_action(
+        game.session_id,
+        ActionRequest(player_id=seer.id, type=ActionType.PASS),
+    ))
+
+    assert success is True, error
+    assert game.phase != GamePhase.NIGHT_SEER
 
 
 def test_decisive_sheriff_self_explode_advances_directly_to_game_end():

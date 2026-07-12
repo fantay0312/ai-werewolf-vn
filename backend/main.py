@@ -404,11 +404,12 @@ def _rate_limit_key(request: Request) -> str:
     if admin_token:
         return f"admin:{admin_token}"
 
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        client_ip = forwarded_for.split(",")[0].strip()
-        if client_ip:
-            return f"ip:{client_ip}"
+    if get_config().server.trust_proxy_headers:
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+            if client_ip:
+                return f"ip:{client_ip}"
 
     client_host = request.client.host if request.client else "anonymous"
     return f"ip:{client_host}"

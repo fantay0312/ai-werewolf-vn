@@ -1,10 +1,11 @@
 import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
-from app.core.event_manager import event_manager
+from app.core.event_manager import SSE_QUEUE_CLOSED, event_manager
 from app.core.game_manager import game_manager
 from app.config import get_server_config
 from app.infrastructure.sse_ticket_store import sse_ticket_store
@@ -14,6 +15,15 @@ from app.security import PLAYER_TOKEN_HEADER
 router = APIRouter()
 logger = logging.getLogger(__name__)
 event_presenter = EventPresenter()
+
+
+def heartbeat_sse_frame() -> dict[str, str]:
+    return {
+        "data": json.dumps(
+            {"event_type": "heartbeat", "schema": "system"},
+            ensure_ascii=False,
+        )
+    }
 
 
 @router.post("/ticket")
@@ -102,14 +112,24 @@ async def sse_endpoint(
                     break
 
                 try:
-                    event = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    event = await asyncio.wait_for(
+                        queue.get(),
+                        timeout=max(1, get_server_config().sse_heartbeat_seconds),
+                    )
+                    if event is SSE_QUEUE_CLOSED:
+                        logger.info(
+                            "SSE stream evicted: session_id=%s viewer_id=%s",
+                            session_id,
+                            resolved_viewer_id,
+                        )
+                        break
                     yield event_presenter.to_sse(
                         event,
                         session_id=session_id,
                         viewer_id=resolved_viewer_id,
                     )
                 except asyncio.TimeoutError:
-                    yield {"comment": "keep-alive"}
+                    yield heartbeat_sse_frame()
         except asyncio.CancelledError:
             logger.info(
                 "SSE stream cancelled: session_id=%s viewer_id=%s",

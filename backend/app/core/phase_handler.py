@@ -115,10 +115,8 @@ class PhaseHandler(ABC):
     def evaluate_win_condition(self) -> bool:
         """Update the winner after a death-producing resolution."""
         winner = Rules.check_win_condition(self.game)
-        if winner is None:
-            return False
         self.game.winner = winner
-        return True
+        return winner is not None
 
     def record_death(self, player: Player, cause: DeathCause) -> None:
         """Record immutable death facts at the resolution point."""

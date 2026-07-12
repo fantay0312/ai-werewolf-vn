@@ -11,18 +11,18 @@ class DayLastWordsHandler(TurnWindowHandler):
         return GamePhase.DAY_LAST_WORDS
 
     def on_enter(self):
-        self.eligible_speakers = sorted(self.game.dead_players)
+        eligible_speakers = sorted(self.game.dead_players)
         next_phase = self._get_next_phase()
-        if not self.eligible_speakers:
+        if not eligible_speakers:
             self.game.speaking_order = []
             return
-        self.prime_speaking_window(self.eligible_speakers, self.eligible_speakers)
-        speaker_str = ", ".join(f"{player_id}号" for player_id in self.eligible_speakers)
+        self.prime_speaking_window(eligible_speakers, eligible_speakers)
+        speaker_str = ", ".join(f"{player_id}号" for player_id in eligible_speakers)
         self.add_log(
             f"请发表遗言。发言顺序：{speaker_str}",
             data=self.build_event_data(
                 "day_last_words_started",
-                eligible_speaker_ids=list(self.eligible_speakers),
+                eligible_speaker_ids=list(eligible_speakers),
                 speaking_order=list(self.game.speaking_order),
                 current_speaker_id=self.current_speaker_id(),
                 next_phase_hint=next_phase.value,
@@ -30,7 +30,7 @@ class DayLastWordsHandler(TurnWindowHandler):
         )
 
     def _is_eligible_speaker(self, player: Player) -> bool:
-        return player.id in self.eligible_speakers
+        return player.id in self.game.dead_players and player.id in self.game.speaking_order
 
     def _speech_content(self, player: Player, action: ActionRequest) -> str:
         return f"{player.id}号(遗言): {action.content}"

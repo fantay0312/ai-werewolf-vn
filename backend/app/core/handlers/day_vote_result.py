@@ -31,7 +31,6 @@ class DayVoteResultHandler(VoteResultHandler):
         )
         self.game.pk_candidates = candidates
         self.game.pk_round = 1
-        self.need_pk = True
 
     def _tie_outcome(self) -> str:
         return "tie"
@@ -43,6 +42,6 @@ class DayVoteResultHandler(VoteResultHandler):
         return f"{winner_id}号玩家以{max_votes}票被放逐。"
 
     def _next_phase(self) -> GamePhase:
-        if getattr(self, "need_pk", False):
+        if self.game.pk_round > 0 and self.game.pk_candidates:
             return GamePhase.DAY_PK_SPEECH
         return GamePhase.NIGHT_START

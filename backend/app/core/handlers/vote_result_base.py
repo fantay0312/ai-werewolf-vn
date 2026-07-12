@@ -59,12 +59,14 @@ class VoteResultHandler(PhaseHandler):
         return False
 
     def try_advance(self) -> Optional[GamePhase]:
+        banished_id = self._resolved_exile_id()
+        if banished_id:
+            skill_phase = self.check_death_skills(banished_id, GamePhase.NIGHT_START)
+            if skill_phase:
+                self.game.winner = None
+                return skill_phase
         if self.game.winner:
             return GamePhase.GAME_END
-        if self.banished_id:
-            skill_phase = self.check_death_skills(self.banished_id, GamePhase.NIGHT_START)
-            if skill_phase:
-                return skill_phase
         return self._next_phase()
 
     def _resolve_exile(self, winner_id, max_votes, candidates, vote_counts, votes_snapshot):
@@ -183,3 +185,15 @@ class VoteResultHandler(PhaseHandler):
 
     def _next_phase(self) -> GamePhase:
         return GamePhase.NIGHT_START
+
+    def _resolved_exile_id(self) -> int | None:
+        player = next(
+            (
+                player for player in self.game.players
+                if player.id in self.game.dead_players
+                and player.death_phase == self.game.phase
+                and player.death_cause == DeathCause.VOTE_EXILE
+            ),
+            None,
+        )
+        return player.id if player else None
