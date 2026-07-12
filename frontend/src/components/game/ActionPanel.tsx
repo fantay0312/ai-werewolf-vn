@@ -20,6 +20,8 @@ export function ActionPanel({ selectedTargetId, onSelectTarget, onOpenVoteModal 
   const currentPhase = useGameStore(state => state.currentPhase)
   const isCandidate = useGameStore(state => state.isCandidate)
   const submitAction = useGameStore(state => state.submitAction)
+  const deadPlayers = useGameStore(state => state.gameState?.dead_players)
+  const pkCandidates = useGameStore(state => state.gameState?.pk_candidates)
 
   return (
     <div className="action-panel relative h-32 p-4 px-6 bg-slate-900/60 backdrop-blur-xl border-t border-white/10 shadow-[0_-8px_32px_rgba(0,0,0,0.4)]">
@@ -30,6 +32,8 @@ export function ActionPanel({ selectedTargetId, onSelectTarget, onOpenVoteModal 
           phase={currentPhase}
           myPlayer={myPlayer}
           isCandidate={isCandidate}
+          deadPlayers={deadPlayers ?? []}
+          pkCandidates={pkCandidates ?? []}
           selectedTargetId={selectedTargetId}
           onSelectTarget={onSelectTarget}
           submitAction={submitAction}

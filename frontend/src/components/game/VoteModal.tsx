@@ -34,7 +34,8 @@ export function VoteModal({
   const pkCandidates = useGameStore(state => state.gameState?.pk_candidates)
   const submitAction = useGameStore(state => state.submitAction)
 
-  const myPlayerId = players?.find(p => p.is_human)?.id
+  const me = players?.find(p => p.is_human)
+  const myPlayerId = me?.id
 
   const title = voteType === 'sheriff' ? '警长投票' : voteType === 'pk' ? 'PK投票' : '放逐投票'
   const description =
@@ -51,8 +52,11 @@ export function VoteModal({
     return p.id !== myPlayerId
   })
 
+  // Progress under the votes-privacy contract: other players' ballots are hidden
+  // during collection, so count who has acted (day/sheriff vote phases report
+  // has_acted truthfully) rather than counting visible ballots.
   const totalVoters = players?.filter(p => p.is_alive).length ?? 0
-  const votedCount = voteRecords.length
+  const votedCount = players?.filter(p => p.is_alive && p.has_acted).length ?? 0
   const voteProgressPercent = totalVoters === 0 ? 0 : Math.round((votedCount / totalVoters) * 100)
   const countdownProgress = Math.round((timeRemaining / 60) * 100)
 
@@ -87,7 +91,9 @@ export function VoteModal({
     return a.voterId - b.voterId
   })
 
-  const hasVoted = voteRecords.some(r => r.voterId === myPlayerId)
+  // Own ballot may already be present in `votes`; has_acted is the reliable
+  // signal once the vote is submitted (before the tally log lands).
+  const hasVoted = voteRecords.some(r => r.voterId === myPlayerId) || Boolean(me?.has_acted)
   const myVoteTarget = voteRecords.find(r => r.voterId === myPlayerId)?.targetId
   const isSheriff = players?.find(p => p.id === myPlayerId)?.is_sheriff
 

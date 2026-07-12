@@ -14,6 +14,10 @@ interface PhaseActionsProps {
   phase: GamePhase | ''
   myPlayer: Player | null
   isCandidate: boolean
+  /** Players out this round — the eligible last-words speakers (may be dead humans). */
+  deadPlayers: number[]
+  /** Tied candidates who must give a PK speech (alive). */
+  pkCandidates: number[]
   selectedTargetId: number | null
   onSelectTarget: (id: number | null) => void
   submitAction: SubmitAction
@@ -116,6 +120,8 @@ export function PhaseActions({
   phase,
   myPlayer,
   isCandidate,
+  deadPlayers,
+  pkCandidates,
   selectedTargetId,
   onSelectTarget,
   submitAction,
@@ -130,6 +136,7 @@ export function PhaseActions({
 
   const isWolf = isWolfRole(myPlayer.role)
   const isAlive = myPlayer.is_alive
+  const myId = myPlayer.id
 
   const runTarget = async (action: ActionType) => {
     await submitAction(action, selectedTargetId ?? undefined)
@@ -151,6 +158,25 @@ export function PhaseActions({
     phase === 'DAY_VOTE' ||
     phase === 'DAY_PK_VOTE' ||
     (phase === 'SHERIFF_VOTE' && !isCandidate)
+
+  // Per-phase eligibility. A blanket `isAlive &&` gate deadlocked phases whose
+  // actor is a *dead* human (hunter/wolf-king shooting, last words) and lacked
+  // any branch for PK speech. Gate each surface by who the backend actually
+  // waits on this phase instead.
+  //
+  // HUNTER_SKILL.match already requires !is_alive (the shooter is out); every
+  // other target phase (wolf kill / seer / guard) is a living-actor action.
+  const targetVisible =
+    !!targetDef && targetDef.match(myPlayer) && (phase === 'HUNTER_SKILL' || isAlive)
+  const isLastWordsSpeaker =
+    phase === 'DAY_LAST_WORDS' && !isAlive && deadPlayers.includes(myId)
+  const isPkSpeaker =
+    phase === 'DAY_PK_SPEECH' && pkCandidates.includes(myId)
+  const isSheriffTransfer =
+    phase === 'SHERIFF_TRANSFER' && myPlayer.is_sheriff
+
+  // When a dead-player action surface is live, the spectator banner must yield.
+  const deadActionActive = targetVisible || isLastWordsSpeaker || isSheriffTransfer
 
   return (
     <>
@@ -175,7 +201,7 @@ export function PhaseActions({
         />
       )}
 
-      {isAlive && targetDef && targetDef.match(myPlayer) && (
+      {targetVisible && targetDef && (
         <TargetActionGroup
           def={targetDef}
           selectedTargetId={selectedTargetId}
@@ -221,6 +247,36 @@ export function PhaseActions({
         />
       )}
 
+      {/* Dead human's turn to speak: the backend makes them the current speaker
+          and accepts SPEECH + CONFIRM, so without this they deadlock the game. */}
+      {isLastWordsSpeaker && (
+        <SpeechComposer
+          label="🕯️ 遗言"
+          wrapperClassName="speech wide-group flex-col items-stretch max-w-[600px] w-full"
+          inputGroupClassName="wide w-full flex"
+          value={speech}
+          onChange={setSpeech}
+          onSubmit={runSpeech}
+          placeholder="留下你的遗言..."
+          trailing={<button onClick={() => runSimple('confirm')} className="btn btn-secondary">结束遗言</button>}
+        />
+      )}
+
+      {/* Alive PK candidate's speech turn — no composer existed, so a human PK
+          candidate deadlocked on their turn. */}
+      {isPkSpeaker && (
+        <SpeechComposer
+          label="🎤 PK发言"
+          wrapperClassName="speech wide-group flex-col items-stretch max-w-[600px] w-full"
+          inputGroupClassName="wide w-full flex"
+          value={speech}
+          onChange={setSpeech}
+          onSubmit={runSpeech}
+          placeholder="进行你的PK发言..."
+          trailing={<button onClick={() => runSimple('confirm')} className="btn btn-secondary">结束发言</button>}
+        />
+      )}
+
       {isAlive && phase === 'SHERIFF_ELECTION' && (
         <div className="action-group sheriff">
           <span className="action-label">👮 警长竞选</span>
@@ -263,8 +319,9 @@ export function PhaseActions({
         </div>
       )}
 
-      {/* Sheriff transfer stays available even when the sheriff is dead. */}
-      {phase === 'SHERIFF_TRANSFER' && myPlayer.is_sheriff && (
+      {/* Sheriff transfer stays available even when the sheriff is dead — the
+          dying sheriff is exactly who operates it. */}
+      {isSheriffTransfer && (
         <div className="action-group sheriff">
           <span className="action-label">👮 移交警徽</span>
           <div className="input-group">
@@ -281,7 +338,7 @@ export function PhaseActions({
         </div>
       )}
 
-      {!isAlive && phase !== 'SHERIFF_TRANSFER' && (
+      {!isAlive && !deadActionActive && (
         <div className="dead-message flex items-center gap-2 text-white/50 bg-black/30 px-6 py-3 rounded-full border border-white/5">
           <span className="text-xl">👻</span>
           <span>你已死亡，正在观战...</span>

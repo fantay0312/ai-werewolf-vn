@@ -13,6 +13,7 @@ import { NightActionAnimation } from '../components/game/NightActionAnimation'
 import { DiscussionDialog } from '../components/game/DiscussionDialog'
 import { GameOverOverlay } from '../components/game/GameOverOverlay'
 import { getSelectionMode, isNightActionPhase, isNightPhase } from '../lib/phases'
+import { deriveTallyRecords, ownBallotRecords, type VoteKind } from '../lib/votes'
 import type { GameLog, VoteRecord, WolfDiscussMessage } from '../types'
 
 const RECOVERY_TIMEOUT_MS = 12000
@@ -153,20 +154,24 @@ export function GameRoom() {
     return []
   }, [currentPhase, myPlayer?.role, wolfDiscussMessages, gameLogs])
 
+  // Vote records under the votes-privacy contract: state exposes only the
+  // viewer's own ballot during collection, so the full tally must come from the
+  // latest PUBLIC result log (vote_entries / vote_counts). Prefer the tally;
+  // fall back to the own ballot while the vote is still being collected.
   const voteRecords = useMemo<VoteRecord[]>(() => {
-    const votes = gameState?.votes || {}
-    const pkVotes = gameState?.pk_votes || {}
+    const kind: VoteKind =
+      currentPhase === 'DAY_PK_VOTE' || currentPhase === 'DAY_PK_RESULT'
+        ? 'pk'
+        : currentPhase === 'SHERIFF_VOTE'
+          ? 'sheriff'
+          : 'exile'
 
-    const currentVotes = currentPhase === 'DAY_PK_VOTE' || currentPhase === 'DAY_PK_RESULT'
-      ? pkVotes
-      : votes
+    const tally = deriveTallyRecords(gameLogs, kind, gameState?.day ?? 1, sheriffId)
+    if (tally) return tally
 
-    return Object.entries(currentVotes).map(([voterId, targetId]) => ({
-      voterId: Number(voterId),
-      targetId: targetId as number | null,
-      weight: Number(voterId) === sheriffId ? 2 : 1
-    }))
-  }, [currentPhase, gameState?.pk_votes, gameState?.votes, sheriffId])
+    const ownVotes = kind === 'pk' ? gameState?.pk_votes : gameState?.votes
+    return ownBallotRecords(ownVotes, myPlayer?.id, sheriffId)
+  }, [currentPhase, gameLogs, gameState?.day, gameState?.pk_votes, gameState?.votes, myPlayer?.id, sheriffId])
 
   const timeRemaining = gameState?.time_remaining || 60
 

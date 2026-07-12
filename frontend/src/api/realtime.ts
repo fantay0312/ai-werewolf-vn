@@ -31,6 +31,22 @@ function backoffDelay(attempt: number): number {
   return Math.round(exp / 2 + Math.random() * (exp / 2))
 }
 
+/**
+ * Heartbeat detection. The backend emits a data-only event every ~15s with the
+ * payload {"event_type":"heartbeat","schema":"system"} so an idle (legitimately
+ * silent) game is not mistaken for a dead stream. Parse defensively: a
+ * non-JSON / unexpected payload is simply treated as a normal event.
+ */
+function isHeartbeatData(data: unknown): boolean {
+  if (typeof data !== 'string') return false
+  try {
+    const payload = JSON.parse(data) as { event_type?: unknown }
+    return payload?.event_type === 'heartbeat'
+  } catch {
+    return false
+  }
+}
+
 function sseEventsUrl(sessionId: string, viewerId: number, ticket: string): string {
   const params = new URLSearchParams({
     session_id: sessionId,
@@ -196,6 +212,22 @@ export class RealtimeConnection {
       this.scheduleRefetch(gen)
     }
 
+    // Default (unnamed) `message` events carry the heartbeat. A heartbeat is a
+    // liveness ping, NOT a state change: reset the safety timer and keep the
+    // stream 'live', but never refetch and never count it toward event activity.
+    // Only the *absence* of heartbeats (missed-safety fallback below) forces a
+    // reconnect, so idle games stay quiet instead of churning connections.
+    const onMessage = (ev: MessageEvent) => {
+      if (!this.isCurrent(gen)) return
+      if (isHeartbeatData(ev.data)) {
+        this.missedSafety = 0
+        this.setStatus('live')
+        this.armSafetyRefetch(gen)
+        return
+      }
+      onEvent()
+    }
+
     es.onopen = () => {
       if (!this.isCurrent(gen)) return
       this.sseFailures = 0
@@ -204,7 +236,7 @@ export class RealtimeConnection {
       this.armSafetyRefetch(gen)
       this.scheduleRefetch(gen) // catch up any events missed before open
     }
-    es.onmessage = onEvent
+    es.onmessage = onMessage
     // Backend uses named EventPresenter events; register the likely names so a
     // named event still triggers a re-fetch. The safety re-fetch backstops any
     // name we do not list.
