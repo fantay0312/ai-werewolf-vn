@@ -1,13 +1,27 @@
 import axios from 'axios'
 import type {
   ActionRequest,
+  ActionResponse,
   CreateGameResponse,
   GameState,
-  GameStateView,
 } from '../types'
 
-// Configure axios defaults
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8001/api'
+/**
+ * Resolve the API base URL:
+ *  1. VITE_API_BASE_URL env override always wins.
+ *  2. On the Vite dev server (import.meta.env.DEV) the backend runs separately
+ *     on :8000, so default to that.
+ *  3. In a production build (served by the backend / nginx) use a same-origin
+ *     relative base so no host is hard-coded.
+ */
+function resolveApiBaseUrl(): string {
+  const override = import.meta.env.VITE_API_BASE_URL
+  if (override) return override
+  if (import.meta.env.DEV) return 'http://127.0.0.1:8000/api'
+  return '/api'
+}
+
+export const API_BASE_URL = resolveApiBaseUrl()
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -32,39 +46,42 @@ function buildRequestHeaders(playerToken?: string | null) {
   return Object.keys(headers).length > 0 ? headers : undefined
 }
 
-function isCreateGameResponse(data: unknown): data is CreateGameResponse {
-  return Boolean(
-    data &&
-    typeof data === 'object' &&
-    'player_token' in data &&
-    'state' in data
-  )
+/** Normalized transport error, so consumers never poke at axios internals. */
+export interface ApiError {
+  status?: number
+  message: string
 }
 
-function normalizeCreateGameResponse(data: GameStateView | CreateGameResponse): CreateGameResponse {
-  if (isCreateGameResponse(data)) {
-    return data
+export function parseApiError(error: unknown, fallback = '请求失败'): ApiError {
+  if (axios.isAxiosError(error)) {
+    const detail = (error.response?.data as { detail?: string } | undefined)?.detail
+    return {
+      status: error.response?.status,
+      message: detail || error.message || fallback,
+    }
   }
-
-  return {
-    player_token: '',
-    state: data,
+  if (error instanceof Error) {
+    return { message: error.message || fallback }
   }
+  return { message: fallback }
 }
 
-// API response types
-export interface ApiResponse<T> {
-  data: T
-  success: boolean
-  message?: string
+// SSE ticket response (POST /api/sse/ticket)
+export interface SseTicketResponse {
+  ticket: string
+  expires_in: number
 }
 
 // Game API
 export const gameApi = {
   // Create a new game
   async createGame(): Promise<CreateGameResponse> {
-    const response = await apiClient.post<CreateGameResponse | GameStateView>('/game/create')
-    return normalizeCreateGameResponse(response.data)
+    const response = await apiClient.post<CreateGameResponse>('/game/create')
+    const data = response.data
+    if (!data?.player_token) {
+      throw new Error('创建游戏失败：服务器未返回玩家令牌')
+    }
+    return data
   },
 
   // Get game state
@@ -76,11 +93,24 @@ export const gameApi = {
   },
 
   // Submit player action
-  async submitAction(sessionId: string, action: ActionRequest, playerToken?: string | null): Promise<void> {
-    await apiClient.post(`/player/${sessionId}/action`, action, {
+  async submitAction(
+    sessionId: string,
+    action: ActionRequest,
+    playerToken?: string | null
+  ): Promise<ActionResponse> {
+    const response = await apiClient.post<ActionResponse>(`/player/${sessionId}/action`, action, {
       headers: buildRequestHeaders(playerToken),
     })
-  }
+    return response.data ?? { success: true }
+  },
+
+  // Request a short-lived, single-use SSE ticket for EventSource auth.
+  async fetchSseTicket(playerToken?: string | null): Promise<SseTicketResponse> {
+    const response = await apiClient.post<SseTicketResponse>('/sse/ticket', undefined, {
+      headers: buildRequestHeaders(playerToken),
+    })
+    return response.data
+  },
 }
 
 // LLM配置类型
@@ -145,52 +175,6 @@ export const configApi = {
       headers: buildRequestHeaders(),
     })
     return response.data
-  }
-}
-
-// Polling helper for game state updates
-export class GameStatePoller {
-  private intervalId: number | null = null
-  private sessionId: string | null = null
-  private playerToken: string | null = null
-  private onUpdate: ((state: GameState) => void) | null = null
-  private onError: ((error: Error) => void) | null = null
-
-  start(
-    sessionId: string,
-    playerToken: string | null,
-    onUpdate: (state: GameState) => void,
-    onError?: (error: Error) => void,
-    intervalMs: number = 2000
-  ) {
-    this.stop()
-    this.sessionId = sessionId
-    this.playerToken = playerToken
-    this.onUpdate = onUpdate
-    this.onError = onError || (() => {})
-
-    this.poll()
-    this.intervalId = window.setInterval(() => this.poll(), intervalMs)
-  }
-
-  stop() {
-    if (this.intervalId) {
-      window.clearInterval(this.intervalId)
-      this.intervalId = null
-    }
-  }
-
-  private async poll() {
-    if (!this.sessionId || !this.onUpdate) return
-
-    try {
-      const state = await gameApi.getGameState(this.sessionId, this.playerToken)
-      this.onUpdate(state)
-    } catch (error) {
-      if (this.onError) {
-        this.onError(error as Error)
-      }
-    }
   }
 }
 

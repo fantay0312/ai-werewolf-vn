@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getStoredSessionId, useGameStore } from '../store/useGameStore'
 import { cn } from '../lib/utils'
@@ -13,12 +13,14 @@ import { NightActionAnimation } from '../components/game/NightActionAnimation'
 import { DiscussionDialog } from '../components/game/DiscussionDialog'
 import type { GameLog, VoteRecord, WolfDiscussMessage } from '../types'
 
+const RECOVERY_TIMEOUT_MS = 12000
+
 export function GameRoom() {
   const navigate = useNavigate()
-  const recoveryAttemptedRef = useRef(false)
   const cancelLoading = useGameStore(state => state.cancelLoading)
   const clearSession = useGameStore(state => state.clearSession)
   const currentPhase = useGameStore(state => state.currentPhase)
+  const error = useGameStore(state => state.error)
   const gameLogs = useGameStore(state => state.gameLogs)
   const gameState = useGameStore(state => state.gameState)
   const isCandidate = useGameStore(state => state.isCandidate)
@@ -27,13 +29,16 @@ export function GameRoom() {
   const loadingText = useGameStore(state => state.loadingText)
   const myPlayer = useGameStore(state => state.myPlayer)
   const recoverSession = useGameStore(state => state.recoverSession)
+  const connectRealtime = useGameStore(state => state.connectRealtime)
+  const disconnectRealtime = useGameStore(state => state.disconnectRealtime)
   const sessionId = useGameStore(state => state.sessionId)
   const sheriffId = useGameStore(state => state.sheriffId)
-  const stopPolling = useGameStore(state => state.stopPolling)
   const winner = useGameStore(state => state.winner)
   const wolfDiscussMessages = useGameStore(state => state.wolfDiscussMessages)
-  
+
   const [loadingElapsed, setLoadingElapsed] = useState(0)
+  const [recoveryFailed, setRecoveryFailed] = useState(false)
+  const [retryNonce, setRetryNonce] = useState(0)
   
   const [showWolfModal, setShowWolfModal] = useState(false)
   const [showVoteModal, setShowVoteModal] = useState(false)
@@ -216,35 +221,79 @@ export function GameRoom() {
     navigate('/')
   }
 
-  useEffect(() => {
-    const storedSessionId = getStoredSessionId()
+  const handleRetry = () => {
+    setRecoveryFailed(false)
+    setRetryNonce((n) => n + 1)
+    connectRealtime()
+  }
 
-    if (!sessionId && storedSessionId && !recoveryAttemptedRef.current) {
-      recoveryAttemptedRef.current = true
-      recoverSession()
+  // Session + realtime lifecycle: recover identity from storage if needed, then
+  // connect the realtime manager and tear it down on unmount.
+  useEffect(() => {
+    if (!sessionId) {
+      if (getStoredSessionId()) {
+        recoverSession()
+        return
+      }
+      navigate('/')
       return
     }
-
-    if (!sessionId && !storedSessionId) {
-      navigate('/')
-    }
-  }, [navigate, recoverSession, sessionId])
-
-  useEffect(() => {
+    connectRealtime()
     return () => {
-      stopPolling()
+      disconnectRealtime()
     }
-  }, [stopPolling])
+  }, [sessionId, recoverSession, connectRealtime, disconnectRealtime, navigate])
 
-  // Show loading screen while recovering session
+  // Recovery watchdog: if no game state arrives within the timeout, surface an
+  // explicit failure state with retry / return-home actions instead of an
+  // inescapable "正在恢复游戏..." spinner.
+  useEffect(() => {
+    if (gameState) {
+      setRecoveryFailed(false)
+      return
+    }
+    setRecoveryFailed(false)
+    const timer = setTimeout(() => setRecoveryFailed(true), RECOVERY_TIMEOUT_MS)
+    return () => clearTimeout(timer)
+  }, [gameState, retryNonce])
+
+  // Show loading screen while recovering session; on timeout, offer an escape.
   if (!gameState) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-950 relative overflow-hidden">
         <img src="/images/game-bg.webp" className="absolute inset-0 w-full h-full object-cover opacity-40" alt="" />
         <div className="absolute inset-0 bg-black/50" />
-        <div className="relative z-10 flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-2 border-transparent border-t-amber-400 border-l-amber-400/30 rounded-full animate-spin" />
-          <span className="text-white/70 text-sm tracking-wide">正在恢复游戏...</span>
+        <div className="relative z-10 flex flex-col items-center gap-4 px-6 text-center">
+          {!recoveryFailed ? (
+            <>
+              <div className="w-12 h-12 border-2 border-transparent border-t-amber-400 border-l-amber-400/30 rounded-full animate-spin" />
+              <span className="text-white/70 text-sm tracking-wide">正在恢复游戏...</span>
+            </>
+          ) : (
+            <>
+              <div className="text-4xl">📡</div>
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-white/90 text-base font-medium">无法连接到服务器</span>
+                <span className="text-white/50 text-sm max-w-xs">
+                  {error || '连接超时，请检查网络后重试，或返回首页重新开始。'}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 mt-2">
+                <button
+                  onClick={handleRetry}
+                  className="px-6 py-2 rounded-full bg-amber-500/15 border border-amber-500/50 text-amber-200 text-sm font-medium tracking-wide transition-all hover:bg-amber-500/25 hover:border-amber-400"
+                >
+                  重试
+                </button>
+                <button
+                  onClick={returnToHome}
+                  className="px-6 py-2 rounded-full bg-white/5 border border-white/20 text-white/70 text-sm font-medium tracking-wide transition-all hover:bg-white/10 hover:text-white"
+                >
+                  返回首页
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     )
