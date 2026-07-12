@@ -356,7 +356,7 @@ export function Home() {
                 <button
                   onClick={continueGame}
                   disabled={isCreating}
-                  className="font-['VT323',monospace] text-[16px] px-4 py-2 bg-transparent border border-[#2d5f3b] text-[#8de0a6] cursor-pointer transition-colors text-left tracking-[2px] hover:bg-[#8de0a6] hover:text-black disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[#8de0a6]"
+                  className="font-['VT323',monospace] text-[16px] px-4 py-2 bg-transparent border border-[#2d5f3b] text-[#8de0a6] cursor-pointer transition-colors text-left tracking-[2px] whitespace-nowrap hover:bg-[#8de0a6] hover:text-black disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[#8de0a6]"
                 >
                   &gt; CONTINUE_GAME
                 </button>
