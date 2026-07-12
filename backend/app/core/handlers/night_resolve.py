@@ -1,4 +1,5 @@
 from app.core.phase_handler import PhaseHandler
+from app.config import get_rules
 from app.models.game_state import DeathCause, GamePhase, Role
 from app.models.action_model import ActionRequest
 from app.core.rules import Rules
@@ -18,26 +19,29 @@ class NightResolveHandler(PhaseHandler):
         ]
         self._death_records = []
 
-        # 检查警长是否被毒杀（特殊规则：吞毒警徽流失）
+        # 可选房规：被毒警长强制流失警徽；标准规则允许移交。
         self.sheriff_poisoned = False
+        self.sheriff_badge_lost = False
         sheriff_id_before = self.game.sheriff_id
         if self.game.sheriff_id:
             sheriff = self.find_player(self.game.sheriff_id)
             if sheriff and sheriff.poisoned_by_witch:
                 self.sheriff_poisoned = True
-                sheriff.is_sheriff = False
-                self.game.sheriff_id = None
-                self.add_log(
-                    "警长被毒杀，警徽流失！",
-                    log_type="broadcast",
-                    data=self.build_event_data(
-                        "sheriff_badge_lost",
-                        resolved_day=resolved_day,
-                        sheriff_id=sheriff.id,
-                        cause=DeathCause.WITCH_POISON.value,
-                        badge_action="lost",
-                    ),
-                )
+                if get_rules().poisoned_sheriff_loses_badge:
+                    self.sheriff_badge_lost = True
+                    sheriff.is_sheriff = False
+                    self.game.sheriff_id = None
+                    self.add_log(
+                        "警长被毒杀，警徽流失！",
+                        log_type="broadcast",
+                        data=self.build_event_data(
+                            "sheriff_badge_lost",
+                            resolved_day=resolved_day,
+                            sheriff_id=sheriff.id,
+                            cause=DeathCause.WITCH_POISON.value,
+                            badge_action="lost",
+                        ),
+                    )
 
         # Update player status
         for pid in dead_player_ids:
@@ -62,6 +66,8 @@ class NightResolveHandler(PhaseHandler):
                 )
 
         self.game.dead_players = dead_player_ids
+        self.game.last_resolved_night = resolved_day
+        self.evaluate_win_condition()
         alive_wolves = self.alive_wolf_count()
         self._eligible_shooters = [
             player.id
@@ -112,6 +118,9 @@ class NightResolveHandler(PhaseHandler):
         dead_ids = self.game.dead_players
         resolved_day = getattr(self, "_resolved_day", self.game.day - 1)
 
+        if self.game.winner:
+            return GamePhase.GAME_END
+
         # Check for shooters (Hunter/Wolf King not poisoned)
         for pid in dead_ids:
             player = self.find_player(pid)
@@ -138,8 +147,8 @@ class NightResolveHandler(PhaseHandler):
                 )
                 return GamePhase.HUNTER_SKILL
 
-        # 警长被毒杀：警徽流失，不进入转移阶段
-        if self.sheriff_poisoned:
+        # 房规启用时，被毒警长不进入移交阶段。
+        if self.sheriff_badge_lost:
             self.add_log(
                 "夜晚结算后直接进入白天阶段。",
                 is_public=False,
@@ -156,7 +165,7 @@ class NightResolveHandler(PhaseHandler):
         # 警长死亡（非毒杀）：需要转移警徽
         for pid in dead_ids:
             player = self.find_player(pid)
-            if player and player.is_sheriff and pid not in self._poisoned_ids:
+            if player and player.is_sheriff:
                 self.game.next_phase_after_skill = GamePhase.DAY_START
                 self.add_log(
                     "夜晚结算检测到警徽移交窗口。",

@@ -124,6 +124,7 @@ class GameState(BaseModel):
     votes: Dict[int, int] = {}  # voter_id -> target_id
     wolf_kill_target: Optional[int] = None
     dead_players: List[int] = []  # List of player IDs who died this night/day
+    last_resolved_night: Optional[int] = None  # Night number used by dawn-only rules
 
     # Sheriff Election Status
     sheriff_candidate_ids: List[int] = []  # Players running for sheriff

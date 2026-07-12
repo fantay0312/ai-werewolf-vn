@@ -9,6 +9,7 @@ class DayLastWordsHandler(PhaseHandler):
 
     def on_enter(self):
         self.eligible_speakers = sorted(self.game.dead_players)
+        next_phase = self._get_next_phase()
 
         if not self.eligible_speakers:
             self.game.speaking_order = []
@@ -24,7 +25,7 @@ class DayLastWordsHandler(PhaseHandler):
                 eligible_speaker_ids=list(self.eligible_speakers),
                 speaking_order=list(self.game.speaking_order),
                 current_speaker_id=self.current_speaker_id(),
-                next_phase_hint=GamePhase.SHERIFF_ELECTION.value,
+                next_phase_hint=next_phase.value,
             ),
         )
 
@@ -53,7 +54,7 @@ class DayLastWordsHandler(PhaseHandler):
                     speaker_index=speaker_index,
                     speaking_order=list(self.game.speaking_order),
                     next_speaker_id=next_speaker.id if next_speaker else None,
-                    next_phase_hint=GamePhase.SHERIFF_ELECTION.value,
+                    next_phase_hint=self._get_next_phase().value,
                 ),
             )
             return True
@@ -73,7 +74,7 @@ class DayLastWordsHandler(PhaseHandler):
                     speaker_index=speaker_index,
                     speaking_order=list(self.game.speaking_order),
                     next_speaker_id=next_speaker.id if next_speaker else None,
-                    next_phase_hint=GamePhase.SHERIFF_ELECTION.value,
+                    next_phase_hint=self._get_next_phase().value,
                 ),
             )
             return True
@@ -82,5 +83,13 @@ class DayLastWordsHandler(PhaseHandler):
 
     def try_advance(self) -> GamePhase:
         if self.all_speakers_done():
-            return GamePhase.SHERIFF_ELECTION
+            next_phase = self._get_next_phase()
+            if next_phase == GamePhase.SHERIFF_ELECTION:
+                self.game.pending_sheriff_election = False
+            return next_phase
         return None
+
+    def _get_next_phase(self) -> GamePhase:
+        if self.game.pending_sheriff_election and not self.game.election_cancelled:
+            return GamePhase.SHERIFF_ELECTION
+        return GamePhase.DAY_DISCUSS

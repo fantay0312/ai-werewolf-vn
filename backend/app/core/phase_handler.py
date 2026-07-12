@@ -2,6 +2,7 @@ import uuid
 import logging
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Tuple
+from app.core.rules import Rules
 from app.models.game_state import DeathCause, GameState, GamePhase, GameLog, Player, Role, ActionType
 from app.models.action_model import ActionRequest
 
@@ -110,6 +111,14 @@ class PhaseHandler(ABC):
     def get_alive_players(self) -> List[Player]:
         """Get all alive players."""
         return [p for p in self.game.players if p.is_alive]
+
+    def evaluate_win_condition(self) -> bool:
+        """Update the winner after a death-producing resolution."""
+        winner = Rules.check_win_condition(self.game)
+        if winner is None:
+            return False
+        self.game.winner = winner
+        return True
 
     def get_wolves(self, alive_only: bool = True) -> List[Player]:
         """Get all wolf players (WOLF and WOLF_KING)."""

@@ -53,6 +53,7 @@ class HunterSkillHandler(PhaseHandler):
                 self.game.dead_players.append(target.id)
             player.gun_used = True
             player.has_acted = True
+            self.evaluate_win_condition()
             self.add_log(
                 f"枪声响起，{target.id}号玩家出局。",
                 log_type="action",
@@ -101,6 +102,9 @@ class HunterSkillHandler(PhaseHandler):
         return False
 
     def try_advance(self) -> GamePhase:
+        if self.game.winner:
+            return GamePhase.GAME_END
+
         shooter = self._find_shooter()
         if shooter:
             return None

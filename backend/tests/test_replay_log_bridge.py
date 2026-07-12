@@ -176,7 +176,7 @@ def test_replay_timeline_keeps_day_last_words_summary_and_public_visibility():
     ]
     assert timeline.frames[0].payload["data"]["speaking_order"] == [1, 2]
     assert timeline.frames[1].payload["data"]["speaker_id"] == 1
-    assert timeline.frames[1].payload["data"]["next_phase_hint"] == GamePhase.SHERIFF_ELECTION.value
+    assert timeline.frames[1].payload["data"]["next_phase_hint"] == GamePhase.DAY_DISCUSS.value
 
 
 def test_replay_timeline_keeps_day_pk_speech_summary_and_public_visibility():

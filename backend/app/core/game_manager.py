@@ -29,12 +29,13 @@ from app.models.action_model import ActionRequest
 from app.core.phase_handler import PhaseHandler
 from app.core.judge import JudgeSystem
 from app.core.event_manager import event_manager
-from app.models.events import PhaseChangeEvent, JudgeBroadcastEvent
+from app.models.events import GameEndEvent, PhaseChangeEvent, JudgeBroadcastEvent
 from app.ai.agent import AIAgent
 from app.security import generate_access_token
 
 # Handlers
 from app.core.handlers.game_start import GameStartHandler
+from app.core.handlers.game_end import GameEndHandler
 from app.core.handlers.night_start import NightStartHandler
 from app.core.handlers.night_wolf_discuss import NightWolfDiscussHandler
 from app.core.handlers.night_wolf_vote import NightWolfVoteHandler
@@ -81,6 +82,7 @@ PHASE_DISPLAY_NAMES = {
     GamePhase.SHERIFF_VOTE: "警长投票",
     GamePhase.HUNTER_SKILL: "猎人/狼王开枪",
     GamePhase.SHERIFF_TRANSFER: "警徽移交",
+    GamePhase.GAME_END: "游戏结束",
 }
 
 ACTION_DISPLAY_NAMES = {
@@ -139,6 +141,7 @@ PHASE_HANDLERS: Dict[GamePhase, type] = {
     GamePhase.SHERIFF_VOTE: SheriffVoteHandler,
     GamePhase.HUNTER_SKILL: HunterSkillHandler,
     GamePhase.SHERIFF_TRANSFER: SheriffTransferHandler,
+    GamePhase.GAME_END: GameEndHandler,
 }
 
 # Phase -> set of roles/conditions that should act
@@ -157,6 +160,13 @@ PHASE_ACTOR_RULES = {
     GamePhase.SHERIFF_VOTE: lambda p, g: True,
 }
 
+SPEECH_PHASES = {
+    GamePhase.DAY_DISCUSS,
+    GamePhase.DAY_LAST_WORDS,
+    GamePhase.SHERIFF_SPEECH,
+    GamePhase.DAY_PK_SPEECH,
+}
+
 
 class GameManager:
     def __init__(self):
@@ -164,6 +174,7 @@ class GameManager:
         self.game_timestamps: Dict[str, float] = {}
         self.player_tokens: Dict[str, str] = {}
         self.ai_locks: Dict[str, asyncio.Lock] = {}
+        self.ai_inflight: Dict[str, tuple[GamePhase, int]] = {}
         self.max_games = 100
         self.game_ttl = 3600 * 24
         self.judge_system = JudgeSystem()
@@ -218,6 +229,7 @@ class GameManager:
             self.game_timestamps[session_id] = record.last_activity_at or record.updated_at.timestamp()
             self.player_tokens[session_id] = record.player_token
             self.ai_locks[session_id] = asyncio.Lock()
+            self.ai_inflight.pop(session_id, None)
             self.event_store.clear(session_id)
             self.event_store.append_many(record.to_domain_events())
             restored += 1
@@ -235,6 +247,7 @@ class GameManager:
         self.game_timestamps.clear()
         self.player_tokens.clear()
         self.ai_locks.clear()
+        self.ai_inflight.clear()
         for session_id in session_ids:
             self.event_store.clear(session_id)
             if not preserve_snapshots and self.persistence_enabled():
@@ -362,6 +375,18 @@ class GameManager:
 
     async def process_action(self, session_id: str, action: ActionRequest) -> tuple[bool, str]:
         """Process action and return (success, error_message)"""
+        if session_id not in self.games:
+            return await self._process_action_locked(session_id, action)
+        lock = self.ai_locks.setdefault(session_id, asyncio.Lock())
+        async with lock:
+            return await self._process_action_locked(session_id, action)
+
+    async def _process_action_locked(
+        self,
+        session_id: str,
+        action: ActionRequest,
+    ) -> tuple[bool, str]:
+        """Validate, mutate, and advance one action while holding the session lock."""
         game = self.games.get(session_id)
         if not game:
             logger.warning(f"Action attempted on non-existent game: {session_id}")
@@ -445,10 +470,8 @@ class GameManager:
                 source=source,
             )
         )
+        next_phase = self._resolve_action_round(game, handler, reason="post_action")
         await self._record_new_logs(game, log_start)
-
-        # Check if phase should advance
-        next_phase = handler.try_advance()
         if next_phase:
             await self._advance_phase(game, next_phase)
         else:
@@ -456,6 +479,58 @@ class GameManager:
             asyncio.create_task(self.trigger_ai_actions(session_id))
 
         return True, ""
+
+    def _resolve_action_round(
+        self,
+        game: GameState,
+        handler: PhaseHandler,
+        *,
+        reason: str,
+    ) -> Optional[GamePhase]:
+        next_phase = handler.try_advance()
+        if next_phase is not None:
+            return next_phase
+        if not self._advance_stalled_speech_window(game, handler, reason=reason):
+            return None
+        return handler.try_advance()
+
+    def _advance_stalled_speech_window(
+        self,
+        game: GameState,
+        handler: PhaseHandler,
+        *,
+        reason: str,
+    ) -> bool:
+        if game.phase not in SPEECH_PHASES:
+            return False
+
+        current_speaker_id = handler.current_speaker_id()
+        if current_speaker_id is None:
+            return False
+        current_speaker = handler.find_player(current_speaker_id)
+        if current_speaker is None or not current_speaker.has_acted:
+            return False
+
+        handler.advance_speaker()
+        next_speaker = handler.activate_current_speaker()
+        handler.add_log(
+            f"{current_speaker_id}号行动失败，系统强制跳过当前发言。",
+            player_id=current_speaker_id,
+            is_public=False,
+            log_type="action",
+            data=handler.build_event_data(
+                "speech_window_force_advanced",
+                reason=reason,
+                skipped_speaker_id=current_speaker_id,
+                next_speaker_id=next_speaker.id if next_speaker else None,
+            ),
+        )
+        logger.warning(
+            "Force-advanced stalled speech window for player %s in %s",
+            current_speaker_id,
+            game.phase,
+        )
+        return True
 
     async def _advance_phase(self, game: GameState, next_phase: GamePhase):
         logger.info(f"Advancing phase from {game.phase} to {next_phase}")
@@ -468,40 +543,62 @@ class GameManager:
         await self._record_domain_event(phase_entered(game, previous_phase))
 
         handler = self._get_handler(game)
-        if handler:
-            log_start = len(game.game_logs)
-            broadcast_type = BROADCAST_PHASES.get(next_phase)
-            if broadcast_type:
-                broadcast_content = self.judge_system.generate_broadcast(broadcast_type)
-                game.game_logs.append(GameLog(
-                    id=str(uuid.uuid4()),
-                    day=game.day,
-                    phase=game.phase,
-                    player_id=0,
-                    content=broadcast_content,
-                    type="broadcast",
-                ))
-                await event_manager.publish(
-                    JudgeBroadcastEvent(
-                        content=broadcast_content,
-                        type=broadcast_type,
-                        session_id=game.session_id,
-                    )
-                )
+        log_start = len(game.game_logs)
+        broadcast_type = BROADCAST_PHASES.get(next_phase)
+        if next_phase == GamePhase.GAME_END:
+            broadcast_type = "game_over"
 
+        broadcast_content = None
+        if broadcast_type:
+            broadcast_content = self.judge_system.generate_broadcast(
+                broadcast_type,
+                winner=game.winner,
+            )
+            game.game_logs.append(GameLog(
+                id=str(uuid.uuid4()),
+                day=game.day,
+                phase=game.phase,
+                player_id=0,
+                content=broadcast_content,
+                type="broadcast",
+            ))
             await event_manager.publish(
-                PhaseChangeEvent(phase=next_phase, day=game.day, session_id=game.session_id)
+                JudgeBroadcastEvent(
+                    content=broadcast_content,
+                    type=broadcast_type,
+                    session_id=game.session_id,
+                )
             )
 
+        await event_manager.publish(
+            PhaseChangeEvent(phase=next_phase, day=game.day, session_id=game.session_id)
+        )
+
+        if next_phase == GamePhase.GAME_END:
+            await event_manager.publish(
+                GameEndEvent(
+                    winner=game.winner or "unknown",
+                    message=broadcast_content or "游戏结束",
+                    session_id=game.session_id,
+                )
+            )
+
+        if handler:
             handler.on_enter()
             await self._record_new_logs(game, log_start)
             self._persist_game_snapshot(game)
+
+            if next_phase == GamePhase.GAME_END:
+                return
 
             auto_next = handler.try_advance()
             if auto_next:
                 await self._advance_phase(game, auto_next)
             else:
                 asyncio.create_task(self.trigger_ai_actions(game.session_id))
+            return
+
+        self._persist_game_snapshot(game)
 
     def _cleanup_old_games(self):
         """Remove expired games and enforce max game limit"""
@@ -514,6 +611,7 @@ class GameManager:
             del self.game_timestamps[sid]
             self.player_tokens.pop(sid, None)
             self.ai_locks.pop(sid, None)
+            self.ai_inflight.pop(sid, None)
             self.event_store.clear(sid)
             if self.persistence_enabled():
                 self._get_snapshot_store().delete(sid)
@@ -527,6 +625,7 @@ class GameManager:
                 del self.game_timestamps[sid]
                 self.player_tokens.pop(sid, None)
                 self.ai_locks.pop(sid, None)
+                self.ai_inflight.pop(sid, None)
                 self.event_store.clear(sid)
                 if self.persistence_enabled():
                     self._get_snapshot_store().delete(sid)
@@ -539,103 +638,180 @@ class GameManager:
         )
 
     async def trigger_ai_actions(self, session_id: str):
-        """Check if any AI players need to act and trigger them."""
+        """Decide outside the session lock, then validate and commit under it."""
         lock = self.ai_locks.setdefault(session_id, asyncio.Lock())
         async with lock:
             game = self.games.get(session_id)
             if not game:
                 return
-
             pending_ais = self._get_pending_ai_players(game)
             if not pending_ais:
                 return
-
             ai_player = pending_ais[0]
-            agent = AIAgent(ai_player)
-            logger.debug("Triggering AI player %s for phase %s", ai_player.id, game.phase)
-
-            fallback_used = False
-            issues: list[str] = []
-            action_type = ActionType.PASS.value
             decision_phase = game.phase
+            inflight = self.ai_inflight.get(session_id)
+            if inflight is not None:
+                return
+            self.ai_inflight[session_id] = (decision_phase, ai_player.id)
+            decision_game = game.model_copy(deep=True)
+            decision_player = next(
+                player for player in decision_game.players if player.id == ai_player.id
+            )
 
-            try:
-                action_request = await agent.decide_action(game)
-                action_type = action_request.type.value
-                logger.debug("AI player %s produced action in phase %s", ai_player.id, game.phase)
-                success, error_msg = await self.process_action(session_id, action_request)
-                if not success:
-                    fallback_used = True
-                    if error_msg:
-                        issues.append(error_msg)
-                    fallback = self._get_fallback_action(game, ai_player)
-                    action_type = fallback.type.value
-                    logger.debug("AI player %s fallback action in phase %s", ai_player.id, game.phase)
-                    success, fallback_error = await self.process_action(session_id, fallback)
-                    if not success:
-                        if fallback_error:
-                            issues.append(fallback_error)
-                        ai_player.has_acted = True
-                        self._persist_game_snapshot(game)
-                        handler = self._get_handler(game)
-                        if handler:
-                            next_phase = handler.try_advance()
-                            if next_phase:
-                                await self._advance_phase(game, next_phase)
-                            else:
-                                asyncio.create_task(self.trigger_ai_actions(session_id))
-            except Exception as e:
+        agent = None
+        fallback_used = False
+        issues: list[str] = []
+        action_type = ActionType.PASS.value
+
+        try:
+            agent = AIAgent(decision_player)
+            logger.debug("Triggering AI player %s for phase %s", ai_player.id, decision_phase)
+            action_request = await agent.decide_action(decision_game)
+            action_type = action_request.type.value
+            success, error_msg, stale = await self._commit_ai_action(
+                session_id,
+                action_request,
+                decision_phase,
+                ai_player.id,
+                decision_player.ai_memory,
+            )
+            if not success and not stale:
                 fallback_used = True
-                issues.append(str(e))
-                logger.error("AI player %s failed in phase %s: %s", ai_player.id, game.phase, e, exc_info=True)
-                try:
-                    fallback = self._get_fallback_action(game, ai_player)
-                    action_type = fallback.type.value
-                    logger.debug("Using fallback action for AI player %s in phase %s", ai_player.id, game.phase)
-                    success, fallback_error = await self.process_action(session_id, fallback)
-                    if not success:
-                        if fallback_error:
-                            issues.append(fallback_error)
-                        ai_player.has_acted = True
-                        self._persist_game_snapshot(game)
-                except Exception as fallback_err:
-                    logger.error("Fallback also failed for AI player %s: %s", ai_player.id, fallback_err)
-                    issues.append(str(fallback_err))
-                    ai_player.has_acted = True
-                    self._persist_game_snapshot(game)
-                handler = self._get_handler(game)
-                if handler:
-                    next_phase = handler.try_advance()
-                    if next_phase:
-                        await self._advance_phase(game, next_phase)
-                    else:
-                        asyncio.create_task(self.trigger_ai_actions(session_id))
-            finally:
-                trace = getattr(agent, "last_decision_trace", {})
-                if trace.get("issues"):
-                    issues.extend(str(issue) for issue in trace["issues"])
-                runtime_metrics.record_business_counter(
-                    "ai_decisions_total",
-                    labels={"fallback_used": str(fallback_used or bool(trace.get("fallback_used"))).lower()},
-                    help_text="Total number of AI decisions by fallback status",
+                if error_msg:
+                    issues.append(error_msg)
+                action_type, fallback_error = await self._fallback_or_force_skip(
+                    session_id,
+                    decision_phase,
+                    ai_player.id,
                 )
-                await self._record_domain_event(
-                    ai_decision_recorded(
-                        game,
-                        actor_id=ai_player.id,
-                        model=trace.get("model", agent.model),
-                        phase=decision_phase,
-                        action_type=trace.get("action_type", action_type),
-                        fallback_used=fallback_used or bool(trace.get("fallback_used")),
-                        issues=list(dict.fromkeys(issues)),
+                if fallback_error:
+                    issues.append(fallback_error)
+            elif stale:
+                issues.append("stale_ai_decision_discarded")
+        except Exception as exc:
+            fallback_used = True
+            issues.append(str(exc))
+            logger.error(
+                "AI player %s failed in phase %s: %s",
+                ai_player.id,
+                decision_phase,
+                exc,
+                exc_info=True,
+            )
+            action_type, fallback_error = await self._fallback_or_force_skip(
+                session_id,
+                decision_phase,
+                ai_player.id,
+            )
+            if fallback_error:
+                issues.append(fallback_error)
+        finally:
+            trace = getattr(agent, "last_decision_trace", {}) if agent else {}
+            if trace.get("issues"):
+                issues.extend(str(issue) for issue in trace["issues"])
+            runtime_metrics.record_business_counter(
+                "ai_decisions_total",
+                labels={"fallback_used": str(fallback_used or bool(trace.get("fallback_used"))).lower()},
+                help_text="Total number of AI decisions by fallback status",
+            )
+            try:
+                current_game = self.games.get(session_id)
+                if current_game:
+                    await self._record_domain_event(
+                        ai_decision_recorded(
+                            current_game,
+                            actor_id=ai_player.id,
+                            model=trace.get("model", getattr(agent, "model", "unknown")),
+                            phase=decision_phase,
+                            action_type=trace.get("action_type", action_type),
+                            fallback_used=fallback_used or bool(trace.get("fallback_used")),
+                            issues=list(dict.fromkeys(issues)),
+                        )
                     )
-                )
+            finally:
+                async with lock:
+                    if self.ai_inflight.get(session_id) == (decision_phase, ai_player.id):
+                        self.ai_inflight.pop(session_id, None)
+                    current_game = self.games.get(session_id)
+                    should_continue = bool(
+                        current_game
+                        and current_game.phase != GamePhase.GAME_END
+                        and self._get_pending_ai_players(current_game)
+                    )
+            if should_continue:
+                asyncio.create_task(self.trigger_ai_actions(session_id))
+
+    async def _commit_ai_action(
+        self,
+        session_id: str,
+        action: ActionRequest,
+        decision_phase: GamePhase,
+        ai_player_id: int,
+        ai_memory: Optional[Dict],
+    ) -> tuple[bool, str, bool]:
+        lock = self.ai_locks.setdefault(session_id, asyncio.Lock())
+        async with lock:
+            game = self.games.get(session_id)
+            if not self._is_ai_decision_current(game, decision_phase, ai_player_id):
+                return False, "AI决策已过期", True
+            player = next(p for p in game.players if p.id == ai_player_id)
+            player.ai_memory = ai_memory
+            success, error = await self._process_action_locked(session_id, action)
+            return success, error, False
+
+    async def _fallback_or_force_skip(
+        self,
+        session_id: str,
+        decision_phase: GamePhase,
+        ai_player_id: int,
+    ) -> tuple[str, str]:
+        lock = self.ai_locks.setdefault(session_id, asyncio.Lock())
+        async with lock:
+            game = self.games.get(session_id)
+            if not self._is_ai_decision_current(game, decision_phase, ai_player_id):
+                return ActionType.PASS.value, ""
+            player = next(p for p in game.players if p.id == ai_player_id)
+            try:
+                fallback = self._get_fallback_action(game, player)
+                action_type = fallback.type.value
+                success, error = await self._process_action_locked(session_id, fallback)
+            except Exception as exc:
+                logger.error("Fallback failed for AI player %s: %s", ai_player_id, exc)
+                action_type = ActionType.PASS.value
+                success, error = False, str(exc)
+            if success:
+                return action_type, ""
+            await self._force_skip_ai_locked(game, player)
+            return action_type, error
+
+    def _is_ai_decision_current(
+        self,
+        game: Optional[GameState],
+        decision_phase: GamePhase,
+        ai_player_id: int,
+    ) -> bool:
+        if game is None or game.phase != decision_phase:
+            return False
+        return any(player.id == ai_player_id for player in self._get_pending_ai_players(game))
+
+    async def _force_skip_ai_locked(self, game: GameState, player: Player) -> None:
+        handler = self._get_handler(game)
+        if handler is None:
+            return
+        log_start = len(game.game_logs)
+        player.has_acted = True
+        next_phase = self._resolve_action_round(game, handler, reason="ai_action_and_fallback_failed")
+        await self._record_new_logs(game, log_start)
+        if next_phase:
+            await self._advance_phase(game, next_phase)
+        else:
+            self._persist_game_snapshot(game)
 
     def _get_pending_ai_players(self, game: GameState) -> List[Player]:
         """Identify AI players that need to act in the current phase."""
         pending = []
 
-        if game.phase in {GamePhase.DAY_DISCUSS, GamePhase.SHERIFF_SPEECH, GamePhase.DAY_PK_SPEECH}:
+        if game.phase in SPEECH_PHASES:
             current_speaker_id = None
             if game.speaking_order and game.current_speaker_index < len(game.speaking_order):
                 current_speaker_id = game.speaking_order[game.current_speaker_index]
@@ -646,19 +822,16 @@ class GameManager:
                 player
                 and not player.is_human
                 and not player.has_acted
-                and (player.is_alive or game.phase == GamePhase.DAY_PK_SPEECH)
+                and (
+                    player.is_alive
+                    or game.phase in {GamePhase.DAY_LAST_WORDS, GamePhase.DAY_PK_SPEECH}
+                )
             ):
                 return [player]
             return pending
 
         for p in game.players:
             if p.has_acted:
-                continue
-
-            # Special: last words phase - only dead AI players
-            if game.phase == GamePhase.DAY_LAST_WORDS:
-                if not p.is_human and p.id in game.dead_players:
-                    pending.append(p)
                 continue
 
             # Special: hunter skill - dead hunter/wolf_king who can shoot
@@ -743,7 +916,11 @@ class GameManager:
     def _get_fallback_action(self, game: GameState, player: Player) -> ActionRequest:
         alive_players = [p for p in game.players if p.is_alive]
         other_alive_players = [p for p in alive_players if p.id != player.id]
-        wolf_targets = [p for p in alive_players]
+        non_wolf_targets = [
+            p for p in alive_players
+            if p.role not in (Role.WOLF, Role.WOLF_KING)
+        ]
+        wolf_targets = non_wolf_targets or alive_players
 
         if game.phase == GamePhase.SHERIFF_ELECTION:
             return ActionRequest(player_id=player.id, type=ActionType.PASS)
@@ -765,10 +942,6 @@ class GameManager:
         if game.phase == GamePhase.NIGHT_WITCH:
             if game.wolf_kill_target and not player.antidote_used:
                 return ActionRequest(player_id=player.id, type=ActionType.SAVE)
-            if not player.poison_used:
-                targets = other_alive_players or alive_players
-                if targets:
-                    return ActionRequest(player_id=player.id, type=ActionType.POISON, target_id=random.choice(targets).id)
             return ActionRequest(player_id=player.id, type=ActionType.PASS)
         if game.phase == GamePhase.NIGHT_GUARD:
             targets = [p for p in alive_players if p.id != game.last_guarded_player]
@@ -786,10 +959,7 @@ class GameManager:
             target_id = random.choice(vote_targets).id if vote_targets else 0
             return ActionRequest(player_id=player.id, type=ActionType.VOTE, target_id=target_id)
         if game.phase == GamePhase.HUNTER_SKILL:
-            targets = other_alive_players or alive_players
-            target_id = random.choice(targets).id if targets else None
-            if target_id is not None:
-                return ActionRequest(player_id=player.id, type=ActionType.SHOOT, target_id=target_id)
+            return ActionRequest(player_id=player.id, type=ActionType.PASS)
         return ActionRequest(player_id=player.id, type=ActionType.PASS)
 
     def _persist_game_snapshot(self, game: GameState) -> bool:

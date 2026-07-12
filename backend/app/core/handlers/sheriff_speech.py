@@ -102,6 +102,11 @@ class SheriffSpeechHandler(PhaseHandler):
                 ),
             )
 
+            if self.evaluate_win_condition():
+                self.exploded = True
+                player.has_acted = True
+                return True
+
             wolf_candidates_count = len(self.game.election_wolf_candidates)
             if self.game.election_explode_count >= 2 and wolf_candidates_count >= 2:
                 self.game.pending_sheriff_election = False
@@ -134,6 +139,9 @@ class SheriffSpeechHandler(PhaseHandler):
         return False
 
     def try_advance(self) -> GamePhase:
+        if self.game.winner:
+            return GamePhase.GAME_END
+
         if getattr(self, 'exploded', False):
             return GamePhase.NIGHT_START
 
