@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from app.infrastructure.runtime_metrics import RuntimeMetricsCollector
+from main import _normalize_request_path
 
 
 def test_counter_updates_are_thread_safe():
@@ -70,3 +71,12 @@ def test_histogram_snapshot_tracks_count_and_sum():
     assert histogram["sum"] == pytest.approx(1.9)
     assert histogram["buckets"][0.25] == 1
     assert histogram["buckets"][2.5] == 1
+
+
+def test_request_path_normalization_bounds_unmatched_label_cardinality():
+    assert _normalize_request_path("/game/random-session") == "/static"
+    assert _normalize_request_path("/favicon-unknown.ico") == "/static"
+    assert _normalize_request_path("/probing/path/123") == "/static"
+    assert _normalize_request_path("/api") == "/api/__unmatched__"
+    assert _normalize_request_path("/api/probe/random/123") == "/api/__unmatched__"
+    assert _normalize_request_path("/api/game/session-1") == "/api/game/:session_id"

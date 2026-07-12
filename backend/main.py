@@ -415,6 +415,19 @@ def _rate_limit_key(request: Request) -> str:
 
 
 def _normalize_request_path(path: str) -> str:
+    fixed_paths = {
+        "/",
+        "/health",
+        "/ready",
+        "/metrics",
+        "/api/sse/events",
+        "/api/sse/ticket",
+        "/api/config/llm",
+        "/api/config/llm/models",
+        "/api/config/llm/test",
+    }
+    if path in fixed_paths:
+        return path
     if path == "/api/game/create":
         return "/api/game/create"
     if re.fullmatch(r"/api/game/[^/]+/replay", path):
@@ -425,4 +438,6 @@ def _normalize_request_path(path: str) -> str:
         return "/api/game/:session_id"
     if re.fullmatch(r"/api/player/[^/]+/action", path):
         return "/api/player/:session_id/action"
-    return path
+    if path == "/api" or path.startswith("/api/"):
+        return "/api/__unmatched__"
+    return "/static"

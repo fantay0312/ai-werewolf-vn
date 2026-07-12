@@ -1,5 +1,7 @@
-from typing import List, Dict, Any
-from app.models.game_state import GameState, Role, GamePhase
+import json
+
+from app.application.ai.prompt_contract import PhasePromptContract, get_phase_prompt_contract
+from app.models.game_state import ActionType, Role, GamePhase
 from app.ai.memory.fact_layer import FactLayer
 from app.ai.memory.summary_layer import SummaryLayer
 from app.ai.memory.recent_layer import RecentLayer
@@ -97,7 +99,9 @@ class PromptBuilder:
         
         dead_lines = []
         for d in fact_layer.dead_players:
-            dead_lines.append(f"- {d.player_id}号：第{d.day}天{d.phase.value}死亡")
+            dead_lines.append(
+                f"- {d.player_id}号：第{d.day}天{d.phase.value}死亡（死因：{d.cause}）"
+            )
         dead_str = "\n".join(dead_lines) if dead_lines else "无"
         
         role_specific = self._get_role_specific_facts(fact_layer)
@@ -241,183 +245,72 @@ class PromptBuilder:
 
     def build_current_task_block(self, fact_layer: FactLayer) -> str:
         phase = fact_layer.current_phase
-        
-        templates = {
-            GamePhase.GAME_START: """
-【可选行动】
-确认身份后继续游戏：
-{
-    "type": "confirm"
-}
-""",
-            GamePhase.NIGHT_WOLF_DISCUSS: """
-【可选行动】
-发言讨论（使用speech类型）：
-{
-    "type": "speech",
-    "content": "你想对队友说的话"
-}
-或者跳过：
-{
-    "type": "pass"
-}
-
-【重要提示】
-你正在狼人讨论阶段，可以与其他狼队友讨论今晚的击杀目标。
-请参考"近期对话"部分，了解队友们已经说过的内容，并在此基础上做出回应。
-你的发言应该：
-1. 回应队友的讨论内容
-2. 提出你的建议和想法
-3. 与队友协调行动策略
-""",
-            GamePhase.NIGHT_WOLF_VOTE: """
-【可选行动】
-{
-    "type": "kill",
-    "target": 目标玩家ID
-}
-""",
-            GamePhase.NIGHT_SEER: """
-【可选行动】
-{
-    "type": "check",
-    "target": 目标玩家ID
-}
-""",
-            GamePhase.NIGHT_WITCH: """
-【可选行动】
-1. 使用解药救人（如果有）：
-{
-    "type": "save",
-    "target": 被刀玩家ID
-}
-2. 使用毒药毒人（如果有）：
-{
-    "type": "poison",
-    "target": 目标玩家ID
-}
-3. 不使用任何药品：
-{
-    "type": "pass"
-}
-""",
-            GamePhase.NIGHT_GUARD: """
-【可选行动】
-{
-    "type": "guard",
-    "target": 目标玩家ID
-}
-或者不守护：
-{
-    "type": "pass"
-}
-""",
-            GamePhase.DAY_DISCUSS: """
-【可选行动】
-{
-    "type": "speech",
-    "content": "你的发言内容"
-}
-或者结束发言：
-{
-    "type": "pass"
-}
-""",
-            GamePhase.DAY_LAST_WORDS: """
-【可选行动】
-发表遗言：
-{
-    "type": "speech",
-    "content": "你的遗言内容"
-}
-或者不发言：
-{
-    "type": "pass"
-}
-""",
-            GamePhase.DAY_VOTE: """
-【可选行动】
-{
-    "type": "vote",
-    "target": 目标玩家ID
-}
-或者弃票：
-{
-    "type": "vote",
-    "target": null
-}
-""",
-            GamePhase.SHERIFF_ELECTION: """
-【可选行动】
-参与竞选：
-{
-    "type": "run_for_sheriff"
-}
-不参与：
-{
-    "type": "pass"
-}
-""",
-            GamePhase.SHERIFF_SPEECH: """
-【可选行动】
-发表竞选演说：
-{
-    "type": "speech",
-    "content": "你的竞选演说"
-}
-退水：
-{
-    "type": "withdraw"
-}
-""",
-            GamePhase.SHERIFF_VOTE: """
-【可选行动】
-投票给候选人：
-{
-    "type": "vote",
-    "target": 候选人ID
-}
-弃票：
-{
-    "type": "vote",
-    "target": null
-}
-""",
-            GamePhase.HUNTER_SKILL: """
-【可选行动】
-开枪带人：
-{
-    "type": "shoot",
-    "target": 目标玩家ID
-}
-不开枪：
-{
-    "type": "pass"
-}
-""",
-            GamePhase.SHERIFF_TRANSFER: """
-【可选行动】
-移交警徽：
-{
-    "type": "vote",
-    "target": 目标玩家ID
-}
-撕掉警徽：
-{
-    "type": "vote",
-    "target": 0
-}
-"""
-        }
-
-        task_desc = templates.get(phase, "当前阶段无需你行动，请等待。")
+        contract = get_phase_prompt_contract(phase)
+        task_desc = self._render_contract_actions(contract)
+        guidance = self._phase_guidance(phase)
         
         return f"""
 === 当前任务 ===
 【阶段】{phase.value}
 {task_desc}
+{guidance}
 
 请根据你的角色和当前局势，输出相应的JSON行动。
 """
+
+    def _render_contract_actions(self, contract: PhasePromptContract) -> str:
+        if not contract.allowed_actions:
+            return "当前阶段无需你行动，请等待。"
+
+        sections = ["【可选行动】"]
+        for index, action in enumerate(contract.allowed_actions, start=1):
+            sections.append(f"{index}. {self._action_label(action)}：")
+            sections.append(self._render_action_example(contract, action))
+        return "\n".join(sections)
+
+    def _render_action_example(
+        self,
+        contract: PhasePromptContract,
+        action: ActionType,
+    ) -> str:
+        payload = {"type": action.value}
+        target_actions = (
+            contract.target_required_actions
+            + contract.target_optional_actions
+            + contract.nullable_target_actions
+        )
+        if action in target_actions:
+            nullable = action in contract.nullable_target_actions
+            payload["target"] = "目标玩家ID或null" if nullable else "目标玩家ID"
+        if action in contract.content_required_actions:
+            payload["content"] = "你的发言内容"
+        return json.dumps(payload, ensure_ascii=False, indent=4)
+
+    def _action_label(self, action: ActionType) -> str:
+        labels = {
+            ActionType.PASS: "跳过或不行动",
+            ActionType.CONFIRM: "确认并继续",
+            ActionType.VOTE: "投票",
+            ActionType.KILL: "选择击杀目标",
+            ActionType.CHECK: "查验身份",
+            ActionType.POISON: "使用毒药",
+            ActionType.SAVE: "使用解药",
+            ActionType.GUARD: "守护玩家",
+            ActionType.SHOOT: "开枪带人",
+            ActionType.SPEECH: "发表发言",
+            ActionType.RUN_FOR_SHERIFF: "参与警长竞选",
+            ActionType.WITHDRAW: "退出竞选",
+            ActionType.SELF_EXPLODE: "狼人自爆",
+        }
+        return labels[action]
+
+    def _phase_guidance(self, phase: GamePhase) -> str:
+        if phase == GamePhase.NIGHT_WOLF_DISCUSS:
+            return "请结合近期对话回应狼队友，并协调今晚的击杀策略。"
+        if phase == GamePhase.DAY_LAST_WORDS:
+            return "请围绕已知信息发表遗言，不要编造新的游戏事实。"
+        if phase == GamePhase.SHERIFF_SPEECH:
+            return "请完成竞选演说、退水，或按角色策略选择自爆。"
+        return ""
 
 prompt_builder = PromptBuilder()
