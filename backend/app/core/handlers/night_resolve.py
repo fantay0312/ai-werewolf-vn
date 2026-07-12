@@ -50,8 +50,7 @@ class NightResolveHandler(PhaseHandler):
                 death_cause = (
                     DeathCause.WITCH_POISON if player.poisoned_by_witch else DeathCause.WOLF_KILL
                 )
-                player.is_alive = False
-                player.death_cause = death_cause
+                self.record_death(player, death_cause)
                 self._death_records.append(
                     {
                         "player_id": player.id,

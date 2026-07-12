@@ -872,7 +872,7 @@ class GameManager:
             if player.is_human:
                 continue
             plan = self.memory_lifecycle.build_plan_from_player(player, game)
-            player.ai_memory = self.memory_lifecycle.apply_legacy_rollover(player.ai_memory, plan)
+            player.ai_memory = self.memory_lifecycle.apply_rollover(player.ai_memory, plan)
 
     def get_domain_events(self, session_id: str):
         return self.event_store.by_session(session_id)

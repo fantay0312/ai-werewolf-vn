@@ -44,11 +44,10 @@ class HunterSkillHandler(PhaseHandler):
             target = self.find_alive_player(action.target_id)
             if not target:
                 return False
-            target.is_alive = False
             target_death_cause = (
                 DeathCause.HUNTER_SHOOT if player.role == Role.HUNTER else DeathCause.WOLF_KING_SHOOT
             )
-            target.death_cause = target_death_cause
+            self.record_death(target, target_death_cause)
             if target.id not in self.game.dead_players:
                 self.game.dead_players.append(target.id)
             player.gun_used = True

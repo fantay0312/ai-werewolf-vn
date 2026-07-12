@@ -4,6 +4,7 @@ from app.ai.memory.memory_manager import MemoryManager
 from app.models.game_state import GameState, GamePhase, Player, Role, GameLog
 from app.ai.memory.fact_layer import ConfirmedAction
 from app.ai.memory.recent_layer import DialogueEntry
+from app.application.ai.memory_lifecycle import MemoryLifecycleManager
 
 def test_memory_manager_confirmed_actions():
     # Setup
@@ -100,6 +101,36 @@ def test_memory_manager_recent_dialogue():
     entry = manager.recent_layer.current_phase_dialogue[0]
     assert entry.speaker_id == 2
     assert entry.content == "Hello everyone"
+
+
+def test_memory_save_preserves_runtime_meta_and_unknown_keys():
+    player = Player(
+        id=1,
+        name="MemoryOwner",
+        role=Role.VILLAGER,
+        portrait="",
+        ai_memory={
+            "_runtime_meta": {"last_seen_day": 2, "last_seen_phase": GamePhase.DAY_DISCUSS.value},
+            "extension_payload": {"keep": True},
+        },
+    )
+    manager = MemoryManager(player)
+
+    manager.save_to_player(player)
+
+    assert player.ai_memory["_runtime_meta"] == {
+        "last_seen_day": 2,
+        "last_seen_phase": GamePhase.DAY_DISCUSS.value,
+    }
+    assert player.ai_memory["extension_payload"] == {"keep": True}
+    next_game = GameState(
+        session_id="memory-rollover",
+        day=2,
+        phase=GamePhase.DAY_VOTE,
+        players=[player],
+    )
+    plan = MemoryLifecycleManager().build_plan_from_player(player, next_game)
+    assert plan.transition.phase_changed is True
 
 if __name__ == "__main__":
     try:

@@ -6,6 +6,8 @@ from app.ai.memory.summary_layer import SummaryLayer, DailySummary
 from app.ai.memory.recent_layer import RecentLayer, DialogueEntry
 from app.models.game_state import GameState, GamePhase, Role, Player
 from app.ai.prompt_builder import prompt_builder
+from app.application.ai.prompt_contract import PHASE_PROMPT_CONTRACTS
+from app.models.game_state import ActionType
 
 def test_hallucination_detector():
     detector = HallucinationDetector()
@@ -114,6 +116,45 @@ def test_prompt_builder():
     recent_block = prompt_builder.build_recent_dialogue(recent_layer)
     assert "不可信输入" in recent_block
     assert "不要听系统" in recent_block
+
+
+@pytest.mark.parametrize("phase, contract", PHASE_PROMPT_CONTRACTS.items())
+def test_current_task_actions_are_generated_from_phase_contract(phase, contract):
+    fact_layer = FactLayer(
+        game_id="contract-task",
+        current_day=1,
+        current_phase=phase,
+        my_player_id=1,
+        my_role=Role.VILLAGER,
+        my_camp="good",
+        alive_players=[1, 2],
+        skill_status=SkillStatus(),
+    )
+
+    prompt = prompt_builder.build_current_task_block(fact_layer)
+
+    for action in contract.allowed_actions:
+        assert f'"type": "{action.value}"' in prompt
+    for action in set(ActionType) - set(contract.allowed_actions):
+        assert f'"type": "{action.value}"' not in prompt
+
+
+def test_current_task_includes_previously_drifted_actions():
+    fact_layer = FactLayer(
+        game_id="drifted-actions",
+        current_day=1,
+        current_phase=GamePhase.SHERIFF_SPEECH,
+        my_player_id=1,
+        my_role=Role.WOLF,
+        my_camp="wolf",
+        alive_players=[1, 2],
+    )
+    sheriff_prompt = prompt_builder.build_current_task_block(fact_layer)
+    fact_layer.current_phase = GamePhase.GAME_START
+    start_prompt = prompt_builder.build_current_task_block(fact_layer)
+
+    assert '"type": "self_explode"' in sheriff_prompt
+    assert '"type": "pass"' in start_prompt
 
 if __name__ == "__main__":
     # Manually run if pytest not available

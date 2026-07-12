@@ -1,23 +1,23 @@
-from app.core.phase_handler import PhaseHandler
-from app.models.game_state import GamePhase, ActionType
+from app.core.handlers.turn_window import TurnWindowHandler
 from app.models.action_model import ActionRequest
+from app.models.game_state import GamePhase, Player
 
 
-class DayLastWordsHandler(PhaseHandler):
+class DayLastWordsHandler(TurnWindowHandler):
+    speech_event = "day_last_words_speech"
+    turn_end_event = "day_last_words_turn_end"
+
     def get_phase(self) -> GamePhase:
         return GamePhase.DAY_LAST_WORDS
 
     def on_enter(self):
         self.eligible_speakers = sorted(self.game.dead_players)
         next_phase = self._get_next_phase()
-
         if not self.eligible_speakers:
             self.game.speaking_order = []
             return
-
-        self.prime_speaking_window(self.eligible_speakers, participant_ids=self.eligible_speakers)
-
-        speaker_str = ", ".join([f"{pid}号" for pid in self.eligible_speakers])
+        self.prime_speaking_window(self.eligible_speakers, self.eligible_speakers)
+        speaker_str = ", ".join(f"{player_id}号" for player_id in self.eligible_speakers)
         self.add_log(
             f"请发表遗言。发言顺序：{speaker_str}",
             data=self.build_event_data(
@@ -29,65 +29,26 @@ class DayLastWordsHandler(PhaseHandler):
             ),
         )
 
-    def process_action(self, action: ActionRequest) -> bool:
-        if not self.is_current_speaker(action.player_id):
-            return False
+    def _is_eligible_speaker(self, player: Player) -> bool:
+        return player.id in self.eligible_speakers
 
-        player = self.find_player(action.player_id)
-        if not player:
-            return False
+    def _speech_content(self, player: Player, action: ActionRequest) -> str:
+        return f"{player.id}号(遗言): {action.content}"
 
-        speaker_index = self.game.current_speaker_index
+    def _turn_end_content(self, player: Player) -> str:
+        return f"{player.id}号结束遗言。"
 
-        if action.type == ActionType.SPEECH:
-            player.has_acted = True
-            self.advance_speaker()
-            next_speaker = self.activate_current_speaker()
-            self.add_log(
-                f"{player.id}号(遗言): {action.content}",
-                player_id=player.id,
-                log_type="speech",
-                data=self.build_event_data(
-                    "day_last_words_speech",
-                    action="speech",
-                    speaker_id=player.id,
-                    speaker_index=speaker_index,
-                    speaking_order=list(self.game.speaking_order),
-                    next_speaker_id=next_speaker.id if next_speaker else None,
-                    next_phase_hint=self._get_next_phase().value,
-                ),
-            )
-            return True
+    def _turn_event_fields(self) -> dict:
+        return {
+            "speaking_order": list(self.game.speaking_order),
+            "next_phase_hint": self._get_next_phase().value,
+        }
 
-        if action.type in (ActionType.CONFIRM, ActionType.PASS):
-            player.has_acted = True
-            self.advance_speaker()
-            next_speaker = self.activate_current_speaker()
-            self.add_log(
-                f"{player.id}号结束遗言。",
-                player_id=player.id,
-                log_type="action",
-                data=self.build_event_data(
-                    "day_last_words_turn_end",
-                    action=action.type.value,
-                    speaker_id=player.id,
-                    speaker_index=speaker_index,
-                    speaking_order=list(self.game.speaking_order),
-                    next_speaker_id=next_speaker.id if next_speaker else None,
-                    next_phase_hint=self._get_next_phase().value,
-                ),
-            )
-            return True
-
-        return False
-
-    def try_advance(self) -> GamePhase:
-        if self.all_speakers_done():
-            next_phase = self._get_next_phase()
-            if next_phase == GamePhase.SHERIFF_ELECTION:
-                self.game.pending_sheriff_election = False
-            return next_phase
-        return None
+    def _on_window_finished(self) -> GamePhase:
+        next_phase = self._get_next_phase()
+        if next_phase == GamePhase.SHERIFF_ELECTION:
+            self.game.pending_sheriff_election = False
+        return next_phase
 
     def _get_next_phase(self) -> GamePhase:
         if self.game.pending_sheriff_election and not self.game.election_cancelled:

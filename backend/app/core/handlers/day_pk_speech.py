@@ -1,10 +1,14 @@
 """平票PK发言阶段处理器"""
-from app.core.phase_handler import PhaseHandler
-from app.models.game_state import GamePhase, ActionType
+
+from app.core.handlers.turn_window import TurnWindowHandler
 from app.models.action_model import ActionRequest
+from app.models.game_state import GamePhase, Player
 
 
-class DayPKSpeechHandler(PhaseHandler):
+class DayPKSpeechHandler(TurnWindowHandler):
+    speech_event = "day_pk_speech"
+    turn_end_event = "day_pk_speech_turn_end"
+
     def get_phase(self) -> GamePhase:
         return GamePhase.DAY_PK_SPEECH
 
@@ -12,8 +16,7 @@ class DayPKSpeechHandler(PhaseHandler):
         pk_candidates = sorted(self.game.pk_candidates)
         if not pk_candidates:
             return
-
-        candidates_str = ", ".join([f"{pid}号" for pid in pk_candidates])
+        candidates_str = ", ".join(f"{player_id}号" for player_id in pk_candidates)
         self.add_log(
             f"进入平票PK环节。PK玩家：{candidates_str}。请依次发表PK发言。",
             log_type="broadcast",
@@ -26,64 +29,20 @@ class DayPKSpeechHandler(PhaseHandler):
                 next_phase_hint=GamePhase.DAY_PK_VOTE.value,
             ),
         )
-
         self.prime_speaking_window(pk_candidates, participant_ids=pk_candidates)
 
-    def process_action(self, action: ActionRequest) -> bool:
-        if not self.is_current_speaker(action.player_id):
-            return False
+    def _speech_content(self, player: Player, action: ActionRequest) -> str:
+        return f"{player.id}号(PK发言): {action.content}"
 
-        player = self.find_player(action.player_id)
-        if not player:
-            return False
+    def _turn_end_content(self, player: Player) -> str:
+        return f"{player.id}号结束PK发言。"
 
-        speaker_index = self.game.current_speaker_index
+    def _turn_event_fields(self) -> dict:
+        return {
+            "pk_candidate_ids": list(self.game.pk_candidates),
+            "speaking_order": list(self.game.speaking_order),
+            "next_phase_hint": GamePhase.DAY_PK_VOTE.value,
+        }
 
-        if action.type == ActionType.SPEECH:
-            player.has_acted = True
-            self.advance_speaker()
-            next_speaker = self.activate_current_speaker()
-            self.add_log(
-                f"{player.id}号(PK发言): {action.content}",
-                player_id=player.id,
-                log_type="speech",
-                data=self.build_event_data(
-                    "day_pk_speech",
-                    action="speech",
-                    speaker_id=player.id,
-                    speaker_index=speaker_index,
-                    pk_candidate_ids=list(self.game.pk_candidates),
-                    speaking_order=list(self.game.speaking_order),
-                    next_speaker_id=next_speaker.id if next_speaker else None,
-                    next_phase_hint=GamePhase.DAY_PK_VOTE.value,
-                ),
-            )
-            return True
-
-        if action.type in (ActionType.CONFIRM, ActionType.PASS):
-            player.has_acted = True
-            self.advance_speaker()
-            next_speaker = self.activate_current_speaker()
-            self.add_log(
-                f"{player.id}号结束PK发言。",
-                player_id=player.id,
-                log_type="action",
-                data=self.build_event_data(
-                    "day_pk_speech_turn_end",
-                    action=action.type.value,
-                    speaker_id=player.id,
-                    speaker_index=speaker_index,
-                    pk_candidate_ids=list(self.game.pk_candidates),
-                    speaking_order=list(self.game.speaking_order),
-                    next_speaker_id=next_speaker.id if next_speaker else None,
-                    next_phase_hint=GamePhase.DAY_PK_VOTE.value,
-                ),
-            )
-            return True
-
-        return False
-
-    def try_advance(self) -> GamePhase:
-        if self.all_speakers_done():
-            return GamePhase.DAY_PK_VOTE
-        return None
+    def _on_window_finished(self) -> GamePhase:
+        return GamePhase.DAY_PK_VOTE

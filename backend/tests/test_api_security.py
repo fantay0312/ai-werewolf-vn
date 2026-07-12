@@ -72,6 +72,36 @@ def test_night_secret_fields_are_not_exposed_to_wrong_viewer():
     assert public_state["wolf_kill_target"] is None
 
 
+def test_game_state_endpoint_hides_other_skill_state_and_live_votes():
+    _, state, session_id, headers = create_game_session(client)
+    game = game_manager.get_game(session_id)
+    human = next(player for player in game.players if player.is_human)
+    other_players = [player for player in game.players if player.id != human.id]
+    witch = other_players[0]
+    hunter = other_players[1]
+    human.role = Role.VILLAGER
+    witch.role = Role.WITCH
+    witch.poison_used = True
+    witch.antidote_used = True
+    hunter.role = Role.HUNTER
+    hunter.gun_used = True
+    game.phase = GamePhase.DAY_VOTE
+    game.votes = {human.id: witch.id, witch.id: human.id}
+
+    viewer_state = get_state(client, session_id, headers)
+    public_state = get_state(client, session_id)
+
+    for payload in (viewer_state, public_state):
+        assert payload["votes"] == {}
+        projected_witch = next(player for player in payload["players"] if player["id"] == witch.id)
+        projected_hunter = next(player for player in payload["players"] if player["id"] == hunter.id)
+        assert projected_witch["role"] == "unknown"
+        assert projected_witch["poison_used"] is False
+        assert projected_witch["antidote_used"] is False
+        assert projected_hunter["role"] == "unknown"
+        assert projected_hunter["gun_used"] is False
+
+
 def test_config_requires_admin_token_when_set(monkeypatch):
     monkeypatch.setenv("BACKEND_ADMIN_TOKEN", "secret-token")
     try:

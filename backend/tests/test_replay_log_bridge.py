@@ -45,7 +45,7 @@ def _build_timeline(game: GameState, *logs):
     return ReplayService().build_timeline(game.session_id, events)
 
 
-def test_replay_timeline_keeps_vote_log_summaries_and_public_visibility():
+def test_replay_timeline_keeps_live_vote_cast_private():
     game = GameState(
         session_id="replay-vote",
         day=2,
@@ -73,7 +73,7 @@ def test_replay_timeline_keeps_vote_log_summaries_and_public_visibility():
     ]
     assert [frame.payload["visibility"] for frame in timeline.frames] == [
         VisibilityScope.PUBLIC.value,
-        VisibilityScope.PUBLIC.value,
+        VisibilityScope.PRIVATE.value,
     ]
     assert timeline.frames[0].payload["data"]["eligible_voter_ids"] == [1, 2, 3]
     assert timeline.frames[1].payload["data"]["voter_id"] == voter_id

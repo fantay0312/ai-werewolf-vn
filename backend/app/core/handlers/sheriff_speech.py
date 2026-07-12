@@ -1,9 +1,14 @@
-from app.core.phase_handler import PhaseHandler
+from typing import Optional
+
+from app.core.handlers.turn_window import TurnWindowHandler
 from app.models.game_state import DeathCause, GamePhase, ActionType, Role
 from app.models.action_model import ActionRequest
 
 
-class SheriffSpeechHandler(PhaseHandler):
+class SheriffSpeechHandler(TurnWindowHandler):
+    speech_event = "sheriff_speech"
+    turn_end_event = "sheriff_speech_turn_end"
+
     def get_phase(self) -> GamePhase:
         return GamePhase.SHERIFF_SPEECH
 
@@ -21,41 +26,18 @@ class SheriffSpeechHandler(PhaseHandler):
         )
 
     def process_action(self, action: ActionRequest) -> bool:
-        player = self.find_player(action.player_id)
-        if (
-            not player
-            or player.id not in self.game.sheriff_candidate_ids
-            or not self.is_current_speaker(action.player_id)
-        ):
+        if super().process_action(action):
+            return True
+
+        player = self._current_turn_player(action.player_id)
+        if not player:
             return False
 
         speaker_index = self.game.current_speaker_index
 
-        if action.type == ActionType.SPEECH:
-            player.has_acted = True
-            self.advance_speaker_to_valid(self.game.sheriff_candidate_ids)
-            next_speaker = self.activate_current_speaker()
-            self.add_log(
-                f"{player.id}号(竞选发言): {action.content}",
-                player_id=player.id,
-                log_type="speech",
-                data=self.build_event_data(
-                    "sheriff_speech",
-                    action="speech",
-                    speaker_id=player.id,
-                    speaker_index=speaker_index,
-                    candidate_ids=sorted(self.game.sheriff_candidate_ids),
-                    next_speaker_id=next_speaker.id if next_speaker else None,
-                ),
-            )
-            return True
-
         if action.type == ActionType.WITHDRAW:
-            if player.id in self.game.sheriff_candidate_ids:
-                self.game.sheriff_candidate_ids.remove(player.id)
-            player.has_acted = True
-            self.advance_speaker_to_valid(self.game.sheriff_candidate_ids)
-            next_speaker = self.activate_current_speaker()
+            self.game.sheriff_candidate_ids.remove(player.id)
+            next_speaker = self._complete_turn(player)
             self.add_log(
                 f"{player.id}号退水。",
                 player_id=player.id,
@@ -75,8 +57,7 @@ class SheriffSpeechHandler(PhaseHandler):
             if player.role not in (Role.WOLF, Role.WOLF_KING):
                 return False
 
-            player.is_alive = False
-            player.death_cause = DeathCause.SELF_EXPLODE
+            self.record_death(player, DeathCause.SELF_EXPLODE)
             if player.id not in self.game.dead_players:
                 self.game.dead_players.append(player.id)
             self.game.election_explode_count += 1
@@ -84,8 +65,7 @@ class SheriffSpeechHandler(PhaseHandler):
             if player.id in self.game.sheriff_candidate_ids:
                 self.game.sheriff_candidate_ids.remove(player.id)
 
-            self.advance_speaker_to_valid(self.game.sheriff_candidate_ids)
-            next_speaker = self.activate_current_speaker()
+            next_speaker = self._complete_turn(player)
 
             self.add_log(
                 f"{player.id}号玩家自爆！身份是{player.role.value}。",
@@ -104,7 +84,6 @@ class SheriffSpeechHandler(PhaseHandler):
 
             if self.evaluate_win_condition():
                 self.exploded = True
-                player.has_acted = True
                 return True
 
             wolf_candidates_count = len(self.game.election_wolf_candidates)
@@ -133,28 +112,43 @@ class SheriffSpeechHandler(PhaseHandler):
                 )
 
             self.exploded = True
-            player.has_acted = True
             return True
 
         return False
 
-    def try_advance(self) -> GamePhase:
+    def try_advance(self) -> Optional[GamePhase]:
         if self.game.winner:
             return GamePhase.GAME_END
-
-        if getattr(self, 'exploded', False):
+        if getattr(self, "exploded", False):
             return GamePhase.NIGHT_START
+        return super().try_advance()
 
-        if self.all_speakers_done():
-            if not self.game.sheriff_candidate_ids:
-                self.add_log(
-                    "所有竞选玩家退水，本局无警长。",
-                    data=self.build_event_data(
-                        "sheriff_election_empty",
-                        candidate_ids=[],
-                    ),
-                )
-                return GamePhase.NIGHT_START
-            return GamePhase.SHERIFF_VOTE
+    def _allowed_turn_actions(self) -> set[ActionType]:
+        return {ActionType.SPEECH}
 
-        return None
+    def _valid_speaker_ids(self) -> Optional[list[int]]:
+        return self.game.sheriff_candidate_ids
+
+    def _is_eligible_speaker(self, player) -> bool:
+        return player.id in self.game.sheriff_candidate_ids
+
+    def _speech_content(self, player, action: ActionRequest) -> str:
+        return f"{player.id}号(竞选发言): {action.content}"
+
+    def _turn_end_content(self, player) -> str:
+        return f"{player.id}号结束竞选发言。"
+
+    def _turn_event_fields(self) -> dict:
+        return {"candidate_ids": sorted(self.game.sheriff_candidate_ids)}
+
+    def _on_window_finished(self) -> GamePhase:
+        if not self.game.sheriff_candidate_ids:
+            self.add_log(
+                "所有竞选玩家退水，本局无警长。",
+                data=self.build_event_data(
+                    "sheriff_election_empty",
+                    candidate_ids=[],
+                ),
+            )
+            return GamePhase.NIGHT_START
+        return GamePhase.SHERIFF_VOTE

@@ -57,6 +57,8 @@ class Player(BaseModel):
     is_sheriff: bool = False
     has_acted: bool = False  # Current phase action status
     death_cause: Optional[DeathCause] = None
+    death_day: Optional[int] = None
+    death_phase: Optional[GamePhase] = None
 
     # Skill status
     poison_used: bool = False
