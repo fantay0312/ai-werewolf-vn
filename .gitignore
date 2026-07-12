@@ -73,3 +73,6 @@ test_output.txt
 rule/
 rule/key.md
 frontend-vue/
+
+# Codex isolated worktree
+.fantayspec/codex-out/
