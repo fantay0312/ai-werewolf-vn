@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Ghost, WifiOff, Moon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { getStoredSessionId, useGameStore } from '../store/useGameStore'
 import { cn } from '../lib/utils'
@@ -7,12 +8,11 @@ import { ActionPanel } from '../components/game/ActionPanel'
 import { JudgeArea } from '../components/game/JudgeArea'
 import { DialogBox } from '../components/common/DialogBox'
 import { SidePanel } from '../components/game/SidePanel'
-import { WolfDiscussionModal } from '../components/game/WolfDiscussionModal'
 import { VoteModal } from '../components/game/VoteModal'
 import { NightActionAnimation } from '../components/game/NightActionAnimation'
 import { DiscussionDialog } from '../components/game/DiscussionDialog'
 import { GameOverOverlay } from '../components/game/GameOverOverlay'
-import { getSelectionMode, isNightActionPhase, isNightPhase } from '../lib/phases'
+import { getSelectionMode, isNightActionPhase, isNightPhase, parseSpeechLine } from '../lib/phases'
 import { deriveTallyRecords, ownBallotRecords, type VoteKind } from '../lib/votes'
 import type { GameLog, VoteRecord, WolfDiscussMessage } from '../types'
 
@@ -42,8 +42,7 @@ export function GameRoom() {
   const [loadingElapsed, setLoadingElapsed] = useState(0)
   const [recoveryFailed, setRecoveryFailed] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
-  
-  const [showWolfModal, setShowWolfModal] = useState(false)
+
   const [showVoteModal, setShowVoteModal] = useState(false)
   const [voteType, setVoteType] = useState<'exile' | 'sheriff' | 'pk'>('exile')
 
@@ -124,35 +123,34 @@ export function GameRoom() {
         id: message.id,
         speakerName: `${message.speaker_id}号`,
         content: message.content,
+        tag: null as string | null,
       }))
     }
-    
+
     if (phase === 'DAY_DISCUSS') {
       const dayLogs = gameLogs.filter(
-        (log: GameLog) => log.phase === 'DAY_DISCUSS' && 
-               log.type === 'speech' && 
+        (log: GameLog) => log.phase === 'DAY_DISCUSS' &&
+               log.type === 'speech' &&
                log.content &&
                log.is_public
       )
-      
+
       return dayLogs.map((log: GameLog) => {
-        const match = log.content.match(/^(\d+)号:\s*(.+)$/)
-        if (match) {
-          return {
-            id: log.id,
-            speakerName: `${match[1]}号`,
-            content: match[2],
-          }
-        }
+        // Defensive parse: split "9号(竞选发言): ..." into speaker + tag + text so
+        // the feed can render styled chips instead of a raw text prefix.
+        const parsed = parseSpeechLine(log.content, log.player_id)
         return {
           id: log.id,
-          speakerName: log.player_id ? `${log.player_id}号` : '未知',
-          content: log.content,
+          speakerName: parsed.speaker ?? (log.player_id ? `${log.player_id}号` : '未知'),
+          content: parsed.text || log.content,
+          tag: parsed.tag,
         }
       })
     }
     return []
   }, [currentPhase, myPlayer?.role, wolfDiscussMessages, gameLogs])
+
+  const isWolfChannel = currentPhase === 'NIGHT_WOLF_DISCUSS'
 
   // Vote records under the votes-privacy contract: state exposes only the
   // viewer's own ballot during collection, so the full tally must come from the
@@ -177,18 +175,10 @@ export function GameRoom() {
 
   const isNight = isNightPhase(currentPhase)
 
-  // Watch for phase changes to auto-open modals
+  // Watch for phase changes to auto-open the single vote surface. Wolf discussion
+  // no longer opens a modal — the bottom DiscussionDialog is the one live feed.
   useEffect(() => {
-    const myRole = myPlayer?.role || ''
-    const isWolfPlayer = ['wolf', 'wolf_king'].includes(myRole)
     const phase = currentPhase
-
-    if (isWolfPlayer && ['NIGHT_WOLF_DISCUSS', 'NIGHT_WOLF_VOTE'].includes(phase)) {
-       setShowWolfModal(true)
-    }
-    if (!phase.startsWith('NIGHT_')) {
-      setShowWolfModal(false)
-    }
 
     if (phase === 'DAY_VOTE') {
       setVoteType('exile')
@@ -203,16 +193,6 @@ export function GameRoom() {
       setShowVoteModal(false)
     }
   }, [currentPhase, isCandidate, myPlayer?.role])
-
-  const openWolfModal = () => {
-    const myRole = myPlayer?.role || ''
-    const isWolfPlayer = ['wolf', 'wolf_king'].includes(myRole)
-    if (!isWolfPlayer) {
-      // Show error some way (need to sync with gameStore if it handles error string)
-      return
-    }
-    setShowWolfModal(true)
-  }
 
   const returnToHome = () => {
     clearSession()
@@ -269,10 +249,10 @@ export function GameRoom() {
             </>
           ) : (
             <>
-              <div className="text-4xl">📡</div>
+              <WifiOff className="w-10 h-10 text-[#c5a059]" strokeWidth={1.5} />
               <div className="flex flex-col items-center gap-1">
-                <span className="text-white/90 text-base font-medium">无法连接到服务器</span>
-                <span className="text-white/50 text-sm max-w-xs">
+                <span className="text-parchment text-base font-medium">无法连接到服务器</span>
+                <span className="text-parchment-dim text-sm max-w-xs">
                   {error || '连接超时，请检查网络后重试，或返回首页重新开始。'}
                 </span>
               </div>
@@ -327,8 +307,8 @@ export function GameRoom() {
 
       {/* Spectator banner: the human is out but information keeps flowing. */}
       {myPlayer && !myPlayer.is_alive && !winner && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full border border-white/10 bg-slate-900/80 px-4 py-1.5 text-sm text-white/70 shadow-lg backdrop-blur-md">
-          <span>👻</span>
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full border border-[color:var(--border-gilded)] bg-[#141210]/90 px-4 py-1.5 text-sm text-parchment-dim shadow-[var(--shadow-ambient)]">
+          <Ghost className="w-4 h-4 text-parchment-dim" strokeWidth={1.5} />
           <span>你已出局，进入观战模式 · 仍可查看公开信息</span>
         </div>
       )}
@@ -359,13 +339,11 @@ export function GameRoom() {
         </div>
       </div>
 
-      <DialogBox />
+      <DialogBox suppressed={showDiscussionDialog} />
 
       <div className="relative z-10">
-        <SidePanel onOpenWolfModal={openWolfModal} />
+        <SidePanel />
       </div>
-
-      <WolfDiscussionModal isOpen={showWolfModal} onClose={() => setShowWolfModal(false)} />
 
       <VoteModal
         isOpen={showVoteModal}
@@ -390,12 +368,12 @@ export function GameRoom() {
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 transition-opacity duration-400 ease-in-out">
           <div className="flex flex-col items-center justify-center bg-slate-900/70 backdrop-blur-md p-10 rounded-3xl border border-white/10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)]">
             <div className="relative w-[120px] h-[120px]">
-              <div className="absolute inset-0 border-2 border-transparent border-t-sky-400 border-l-sky-400/30 rounded-full animate-[spin_2s_linear_infinite]"></div>
-              <div className="absolute inset-[12px] border-2 border-transparent border-b-purple-400 border-r-purple-400/30 rounded-full animate-[spin_3s_linear_infinite_reverse]"></div>
-              <div className="absolute inset-[24px] border-2 border-transparent border-t-amber-400 border-l-amber-400/30 rounded-full animate-[spin_4s_linear_infinite]"></div>
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[2rem] animate-[moonPulse_3s_ease-in-out_infinite]">🌙</div>
+              <div className="absolute inset-0 border-2 border-transparent border-t-[#c5a059] border-l-[#c5a059]/30 rounded-full animate-[spin_2s_linear_infinite]"></div>
+              <div className="absolute inset-[12px] border-2 border-transparent border-b-[#fcd34d] border-r-[#fcd34d]/30 rounded-full animate-[spin_3s_linear_infinite_reverse]"></div>
+              <div className="absolute inset-[24px] border-2 border-transparent border-t-[#8b6914] border-l-[#8b6914]/30 rounded-full animate-[spin_4s_linear_infinite]"></div>
+              <Moon className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-[#c5a059] animate-[moonPulse_3s_ease-in-out_infinite]" fill="currentColor" strokeWidth={1} />
             </div>
-            <div className="mt-6 text-[1.1rem] font-medium tracking-[0.1em] text-slate-50 text-center uppercase animate-[pulse_2s_ease-in-out_infinite]">
+            <div className="mt-6 text-[1.1rem] font-medium tracking-[0.1em] text-parchment text-center uppercase animate-[pulse_2s_ease-in-out_infinite] font-display">
               {loadingText}
             </div>
             {loadingElapsed > 3 && (
@@ -420,6 +398,7 @@ export function GameRoom() {
       <DiscussionDialog
         messages={discussionMessages}
         visible={showDiscussionDialog}
+        isWolfChannel={isWolfChannel}
       />
 
     </div>

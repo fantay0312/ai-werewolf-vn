@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
+import { MessageCircle, ChevronDown, X, Gavel } from 'lucide-react'
 import { useGameStore } from '../../store/useGameStore'
 import { TypeWriter } from '../ui/TypeWriter'
 import type { Role } from '../../types'
 import { getCampBadgeClass, getRoleName } from '../../lib/roles'
 
-export function DialogBox() {
+interface DialogBoxProps {
+  /** Hide the VN box while the DiscussionDialog feed owns the same speech,
+      so the line never renders in two colliding surfaces at once. */
+  suppressed?: boolean
+}
+
+export function DialogBox({ suppressed = false }: DialogBoxProps) {
   const [dismissedLogId, setDismissedLogId] = useState<string | null>(null)
   const [completedLogId, setCompletedLogId] = useState<string | null>(null)
   const [minimized, setMinimized] = useState(false)
@@ -67,18 +74,16 @@ export function DialogBox() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [currentLog, isTypingComplete, minimized])
 
-  if (!currentLog) return null
+  if (!currentLog || suppressed) return null
 
   // Minimized: small floating button
   if (minimized) {
     return (
       <button
         onClick={() => setMinimized(false)}
-        className="fixed bottom-36 left-[140px] z-[45] flex items-center gap-2 px-3 py-2 bg-slate-900/80 backdrop-blur-md border border-white/15 rounded-full text-sm text-sky-400 shadow-lg hover:bg-slate-800/90 hover:scale-105 transition-all cursor-pointer"
+        className="fixed bottom-36 left-[140px] z-[45] flex items-center gap-2 px-3 py-2 bg-[#141210]/90 backdrop-blur-md border border-[color:var(--border-gilded)] rounded-full text-sm text-[#c5a059] shadow-[var(--shadow-ambient)] hover:bg-[#1c1913]/95 hover:scale-105 transition-all cursor-pointer"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-        </svg>
+        <MessageCircle className="w-4 h-4" strokeWidth={1.5} />
         <span>{speakerLabel}发言</span>
       </button>
     )
@@ -87,14 +92,14 @@ export function DialogBox() {
   // Expanded: compact dialog
   return (
     <div className="fixed bottom-36 left-[140px] z-[45] w-[420px] max-w-[calc(100vw-480px)] animate-fade-in-up">
-      <div className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.5)] overflow-hidden">
+      <div className="bg-[#141210]/90 backdrop-blur-xl border border-[color:var(--border-gilded)] rounded-[10px] shadow-[var(--shadow-ambient)] overflow-hidden">
         {/* Header - compact */}
-        <div className="flex items-center justify-between px-3 py-2 bg-white/5 border-b border-white/10">
+        <div className="flex items-center justify-between px-3 py-2 bg-white/[0.04] border-b border-[color:var(--border-gilded)]">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white border border-white/20 bg-gradient-to-br from-slate-600 to-slate-800 shrink-0">
-              {speaker ? speaker.id : '⚖️'}
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white border border-[color:var(--border-gilded)] bg-gradient-to-br from-slate-700 to-slate-900 shrink-0">
+              {speaker ? speaker.id : <Gavel className="w-3.5 h-3.5 text-[#c5a059]" strokeWidth={1.5} />}
             </div>
-            <span className="text-sm font-bold text-white truncate">{speakerLabel}</span>
+            <span className="text-sm font-bold text-parchment truncate font-display">{speakerLabel}</span>
             {showRoleBadge && (
               <span className={`${roleBadgeClass} text-[10px] px-1.5 py-0.5`}>
                 {getRoleName(speaker?.role ?? '')}
@@ -104,31 +109,27 @@ export function DialogBox() {
           <div className="flex items-center gap-1 shrink-0 ml-2">
             <button
               onClick={() => setMinimized(true)}
-              className="w-6 h-6 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors"
+              className="w-6 h-6 flex items-center justify-center rounded text-parchment-dim hover:text-parchment hover:bg-white/10 transition-colors"
               title="最小化"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-              </svg>
+              <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />
             </button>
             <button
               onClick={() => {
                 setDismissedLogId(currentLog.id)
                 setCompletedLogId(null)
               }}
-              className="w-6 h-6 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors"
+              className="w-6 h-6 flex items-center justify-center rounded text-parchment-dim hover:text-parchment hover:bg-white/10 transition-colors"
               title="关闭"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X className="w-3.5 h-3.5" strokeWidth={1.5} />
             </button>
           </div>
         </div>
 
         {/* Content - compact */}
         <div className="px-3 py-2.5">
-          <div className="text-sm leading-relaxed text-white/90">
+          <div className="text-sm leading-relaxed text-parchment">
             <TypeWriter
               key={currentLog.id}
               text={currentLog.content}
@@ -148,7 +149,7 @@ export function DialogBox() {
               <span className="typing-dot" style={{ animationDelay: '0.4s' }}></span>
             </span>
           ) : (
-            <span className="text-white/30 text-xs">按任意键关闭</span>
+            <span className="text-parchment-dim/70 text-xs">按任意键关闭</span>
           )}
         </div>
       </div>

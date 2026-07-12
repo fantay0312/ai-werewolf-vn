@@ -24,7 +24,7 @@ export function ActionPanel({ selectedTargetId, onSelectTarget, onOpenVoteModal 
   const pkCandidates = useGameStore(state => state.gameState?.pk_candidates)
 
   return (
-    <div className="action-panel relative h-32 p-4 px-6 bg-slate-900/60 backdrop-blur-xl border-t border-white/10 shadow-[0_-8px_32px_rgba(0,0,0,0.4)]">
+    <div className="action-panel relative h-32 p-4 px-6 bg-[#141210]/92 border-t border-[color:var(--border-gilded)] shadow-[0_-8px_32px_rgba(0,0,0,0.4)]">
       {myPlayer && <RolePortrait role={myPlayer.role} />}
 
       <div className="action-container pl-[160px] flex items-center justify-center gap-4 flex-wrap h-full">

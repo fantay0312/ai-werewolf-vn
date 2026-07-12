@@ -1,9 +1,12 @@
 import { memo, type CSSProperties, type MouseEvent } from 'react'
-import { Skull, Crown } from 'lucide-react'
+import { Skull, Crown, Check, Swords, Eye, Shield, Heart, Crosshair, type LucideIcon } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { Player, SelectionMode } from '../../types'
 import { isWolfRole } from '../../types'
 import { getPortraitUrl, getRoleName } from '../../lib/roles'
+
+/** Where to anchor the seat speech bubble so it never runs off the board edge. */
+export type BubbleAlign = 'start' | 'center' | 'end'
 
 interface PlayerSeatProps {
   player: Player
@@ -14,6 +17,9 @@ interface PlayerSeatProps {
   showRole?: boolean
   canSelect?: boolean
   selectionMode?: SelectionMode
+  /** Short excerpt of this seat's current speech (only for the current speaker). */
+  speechExcerpt?: string | null
+  bubbleAlign?: BubbleAlign
   onClick?: (player: Player) => void
   onMouseEnter?: (id: number) => void
   onMouseLeave?: () => void
@@ -22,22 +28,23 @@ interface PlayerSeatProps {
   style?: CSSProperties
 }
 
-const selectionModeIcons: Record<SelectionMode, string> = {
-  none: '',
-  vote: '✓',
-  kill: '🐺',
-  check: '🔮',
-  protect: '🛡️',
-  poison: '☠️',
-  save: '💚',
-  shoot: '🔫',
+// Small lucide glyphs for the selection indicator (replaces the emoji set).
+const selectionModeIcons: Record<SelectionMode, LucideIcon | null> = {
+  none: null,
+  vote: Check,
+  kill: Swords,
+  check: Eye,
+  protect: Shield,
+  poison: Skull,
+  save: Heart,
+  shoot: Crosshair,
 }
 
 const selectedFrameColors: Record<SelectionMode, string> = {
   none: 'rgba(100, 116, 139, 0.5)',
   vote: 'rgba(59, 130, 246, 1)',
   kill: 'rgba(244, 63, 94, 1)',
-  check: 'rgba(217, 70, 239, 1)',
+  check: 'rgba(197, 160, 89, 1)',
   protect: 'rgba(6, 182, 212, 1)',
   poison: 'rgba(225, 29, 72, 1)',
   save: 'rgba(16, 185, 129, 1)',
@@ -53,6 +60,8 @@ function PlayerSeatComponent({
   showRole = false,
   canSelect = false,
   selectionMode = 'none',
+  speechExcerpt = null,
+  bubbleAlign = 'center',
   onClick,
   onMouseEnter,
   onMouseLeave,
@@ -63,6 +72,8 @@ function PlayerSeatComponent({
   const isDead = !player.is_alive
   const roleName = getRoleName(player.role)
   const portraitUrl = showRole ? getPortraitUrl(player.role) : null
+  const SelectionIcon = selectionModeIcons[selectionMode]
+  const showBubble = isCurrentSpeaker && !isDead && !!speechExcerpt
 
   const cssFrameColor = (() => {
     if (isDead) return 'rgba(159, 18, 57, 0.8)' // rose-900 border
@@ -82,6 +93,7 @@ function PlayerSeatComponent({
         isHovered && canSelect ? 'is-hovered' : '',
         isMe ? 'is-me' : '',
         canSelect && !isDead ? 'can-select' : '',
+        showBubble ? 'has-bubble' : '',
         className
       )}
       style={style}
@@ -95,6 +107,13 @@ function PlayerSeatComponent({
         }
       }}
     >
+      {/* 发言气泡：当前发言者的简短摘要，2 行截断，永不覆盖相邻座位 */}
+      {showBubble && (
+        <div className={cn('seat-bubble', `align-${bubbleAlign}`)}>
+          {speechExcerpt}
+        </div>
+      )}
+
       {/* 发言中声波效果 */}
       {isCurrentSpeaker && !isDead && (
         <div className="speaker-wave-container">
@@ -155,12 +174,12 @@ function PlayerSeatComponent({
         )}
 
         {/* 选中指示图标 */}
-        {isSelected && (
+        {isSelected && SelectionIcon && (
           <div className={cn(
             "selection-indicator absolute z-30 flex items-center justify-center w-8 h-8 rounded-full shadow-[0_0_15px_currentColor] animate-scale-in",
             `indicator-${selectionMode}`
           )}>
-            <span className="text-sm font-bold">{selectionModeIcons[selectionMode]}</span>
+            <SelectionIcon className="w-4 h-4" strokeWidth={2} />
           </div>
         )}
 

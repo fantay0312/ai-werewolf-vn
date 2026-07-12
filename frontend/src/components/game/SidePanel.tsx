@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { Check } from 'lucide-react'
 import { GameIcon } from '../common/GameIcon'
 import { useGameStore } from '../../store/useGameStore'
 import { cn } from '../../lib/utils'
@@ -8,11 +9,7 @@ import { stripSpeakerPrefix } from '../../lib/phases'
 
 type TabType = 'players' | 'logs' | 'wolf'
 
-interface SidePanelProps {
-  onOpenWolfModal?: () => void
-}
-
-export function SidePanel({ onOpenWolfModal }: SidePanelProps) {
+export function SidePanel() {
   const [activeTab, setActiveTab] = useState<TabType>('players')
   const logListRef = useRef<HTMLDivElement>(null)
 
@@ -41,7 +38,6 @@ export function SidePanel({ onOpenWolfModal }: SidePanelProps) {
     }
   }, [activeTab, gameLogs.length])
 
-  const isWolfPhase = ['NIGHT_WOLF_DISCUSS', 'NIGHT_WOLF_VOTE'].includes(currentPhase)
   const showWolfTab = myPlayer?.role === 'wolf' || myPlayer?.role === 'wolf_king'
 
   const sortedPlayers = useMemo(() => {
@@ -106,7 +102,7 @@ export function SidePanel({ onOpenWolfModal }: SidePanelProps) {
   ]
 
   return (
-    <div className="side-panel w-[300px] min-w-[300px] max-lg:w-[260px] max-lg:min-w-[260px] max-sm:w-[220px] max-sm:min-w-[220px] h-full flex flex-col bg-slate-900/55 backdrop-blur-xl border-l border-white/10 shadow-[-8px_0_30px_rgba(0,0,0,0.5)]">
+    <div className="side-panel w-[300px] min-w-[300px] max-lg:w-[260px] max-lg:min-w-[260px] max-sm:w-[220px] max-sm:min-w-[220px] h-full flex flex-col bg-[#141210]/92 border-l border-[color:var(--border-gilded)] shadow-[-8px_0_30px_rgba(0,0,0,0.5)]">
       
       <div className="panel-header-decor flex items-center justify-center py-2 px-4 gap-2">
         <div className="decor-line"></div>
@@ -177,7 +173,7 @@ export function SidePanel({ onOpenWolfModal }: SidePanelProps) {
                   {!player.is_alive ? (
                     <GameIcon name="skull" size="sm" className="status-dead" color="#ef4444" />
                   ) : player.has_acted ? (
-                    <span className="status-acted text-green-500">✓</span>
+                    <Check className="status-acted w-4 h-4 text-emerald-400" strokeWidth={2} />
                   ) : null}
                 </div>
               </div>
@@ -197,7 +193,7 @@ export function SidePanel({ onOpenWolfModal }: SidePanelProps) {
                     <span className={cn('log-speaker block font-semibold text-xs mb-0.5', !log.player_id ? 'system' : 'text-[#c5a059]')}>
                       {log.player_id ? `${log.player_id}号玩家` : '系统'}
                     </span>
-                    <span className="log-message block text-white/85 text-sm word-break">
+                    <span className="log-message block text-parchment/85 text-sm word-break">
                       {stripSpeakerPrefix(log.content, log.player_id)}
                     </span>
                   </div>
@@ -220,25 +216,21 @@ export function SidePanel({ onOpenWolfModal }: SidePanelProps) {
           <div className="wolf-tab h-full">
             {showWolfTab ? (
               <div className="wolf-chat h-full flex flex-col bg-gradient-to-b from-red-900/10 to-transparent">
-                <div className="wolf-header flex items-center justify-center gap-2 p-3 text-red-500 font-semibold border-b border-red-500/20 flex-wrap">
+                <div className="wolf-header flex items-center justify-center gap-2 p-3 text-red-400 font-semibold border-b border-red-500/20 flex-wrap">
                   <GameIcon name="wolf" size="sm" />
                   <span>狼人密谋频道</span>
-                  {isWolfPhase && (
-                    <button onClick={onOpenWolfModal} className="open-modal-btn px-3 py-1 text-xs bg-gradient-to-br from-red-800 to-red-900 text-white rounded-full hover:scale-105 transition-transform">
-                      <GameIcon name="chat" size="xs" className="inline mr-1" /> 打开讨论
-                    </button>
-                  )}
+                  <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-300/90">仅狼人可见</span>
                 </div>
                 <div className="wolf-messages flex-1 overflow-y-auto p-2">
                   {wolfDiscussMessages.map((msg, index) => (
-                    <div key={msg.id || `${msg.speaker_id}-${msg.round}-${index}`} className="wolf-message p-2 mb-2 bg-red-500/10 border border-red-500/20 rounded-lg">
-                      <span className="wolf-sender text-red-400 font-bold mr-1">{msg.speaker_id}号:</span>
-                      <span className="wolf-text text-white/90">{msg.content}</span>
+                    <div key={msg.id || `${msg.speaker_id}-${msg.round}-${index}`} className="wolf-message p-2 mb-2 bg-red-500/10 border-l-2 border-red-500/50 rounded-r-lg">
+                      <span className="wolf-sender inline-block text-[11px] font-bold text-red-300 px-1.5 py-0.5 mr-1.5 rounded bg-red-500/15">{msg.speaker_id}号</span>
+                      <span className="wolf-text text-parchment/90">{msg.content}</span>
                       <div className="wolf-meta text-[10px] text-red-400/50 mt-1">第{msg.round}轮</div>
                     </div>
                   ))}
                   {wolfDiscussMessages.length === 0 && (
-                    <div className="empty-state text-center mt-10 text-slate-500">
+                    <div className="empty-state text-center mt-10 text-parchment-dim/70">
                       <GameIcon name="moon" size="lg" className="mx-auto opacity-50 mb-2" />
                       <p>暂无狼人讨论</p>
                     </div>
@@ -270,8 +262,8 @@ export function SidePanel({ onOpenWolfModal }: SidePanelProps) {
       <div className="hint-bar flex items-start gap-3 p-3 bg-amber-500/5 border-t border-white/5">
         <div className="hint-icon mt-0.5"><GameIcon name="announce" size="sm" color="#c5a059" /></div>
         <div className="hint-content">
-          <span className="hint-label block text-xs font-semibold text-amber-500/80 mb-0.5">当前阶段提示:</span>
-          <p className="hint-text text-xs text-white/70 leading-relaxed">{phaseHint}</p>
+          <span className="hint-label block text-xs font-semibold text-[#c5a059]/90 mb-0.5">当前阶段提示:</span>
+          <p className="hint-text text-xs text-parchment-dim leading-relaxed">{phaseHint}</p>
         </div>
       </div>
 

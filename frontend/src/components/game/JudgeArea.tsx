@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { Moon, Sun, Gavel, Megaphone } from 'lucide-react'
 import { useGameStore } from '../../store/useGameStore'
 import { PHASE_NAMES, type GameLog } from '../../types'
 import { cn } from '../../lib/utils'
@@ -36,9 +37,12 @@ export function JudgeArea() {
   const timerProgress = (localTimeRemaining / (maxTime || 60)) * 100
   const timerColorClass = timerProgress > 60 ? 'text-green-400 stroke-green-400' : timerProgress > 30 ? 'text-yellow-400 stroke-yellow-400' : 'text-red-400 stroke-red-400 animate-pulse'
 
+  // The judge banner carries judge/system broadcasts ONLY. Player speech lives in
+  // the DiscussionDialog feed + a short seat bubble, so excluding speech here
+  // removes the three-copies-of-one-sentence redundancy on screen.
   const recentBroadcasts = useMemo(() => {
     const logs = gameLogs || []
-    return logs.filter(log => log.is_public).slice(-8)
+    return logs.filter(log => log.is_public && log.type !== 'speech').slice(-8)
   }, [gameLogs])
 
   useEffect(() => {
@@ -51,9 +55,9 @@ export function JudgeArea() {
     }
   }, [recentBroadcasts.length])
 
-  function getSpeakerDisplay(log: GameLog) {
+  function getSpeakerDisplay(log: GameLog): ReactNode {
     if (log.player_id) return String(log.player_id)
-    return '📢'
+    return <Megaphone className="w-3.5 h-3.5" strokeWidth={1.5} />
   }
 
   function getSpeakerAvatarClass(log: GameLog) {
@@ -77,7 +81,7 @@ export function JudgeArea() {
     switch(type) {
       case 'death': return 'border-l-red-400/60'
       case 'vote': return 'border-l-blue-400/60'
-      case 'skill': return 'border-l-purple-400/60'
+      case 'skill': return 'border-l-amber-600/60'
       case 'system': return 'border-l-yellow-400/50'
       case 'speech': return 'border-l-white/15'
       case 'judge': return 'border-l-yellow-500/50'
@@ -97,26 +101,28 @@ export function JudgeArea() {
   }
 
   return (
-    <div className="judge-area flex items-center gap-4 py-2.5 px-5 h-full bg-slate-950/90 backdrop-blur-md border-b border-white/5 shadow-[0_2px_12px_rgba(0,0,0,0.3)]">
-      
+    <div className="judge-area flex items-center gap-4 py-2.5 px-5 h-full bg-[#141210]/92 border-b border-[color:var(--border-gilded)] shadow-[0_2px_12px_rgba(0,0,0,0.3)]">
+
       {/* Phase Info */}
       <div className="phase-info flex items-center gap-2.5 shrink-0">
-        <div className={cn("text-[1.6rem]", isNight ? "drop-shadow-[0_0_6px_rgba(96,165,250,0.4)]" : "drop-shadow-[0_0_6px_rgba(251,191,36,0.4)]")}>
-          {isNight ? '🌙' : '☀️'}
+        <div className={cn(isNight ? "text-[#93b4e8] drop-shadow-[0_0_6px_rgba(96,165,250,0.4)]" : "text-[#d4a83c] drop-shadow-[0_0_6px_rgba(197,160,89,0.4)]")}>
+          {isNight
+            ? <Moon className="w-7 h-7" fill="currentColor" strokeWidth={1} />
+            : <Sun className="w-7 h-7" fill="currentColor" strokeWidth={1.5} />}
         </div>
         <div className="flex flex-col">
-          <span className="text-[0.7rem] text-white/40 tracking-[1px]">第 {currentDay} 天</span>
-          <span className={cn("text-[1.1rem] font-bold tracking-[1.5px]", isNight ? "text-[#93b4e8]" : "text-[#d4a83c]")}>{phaseText}</span>
+          <span className="text-[0.7rem] text-parchment-dim tracking-[1px]">第 {currentDay} 天</span>
+          <span className={cn("font-display text-[1.2rem] font-bold tracking-[2px]", isNight ? "text-[#93b4e8]" : "text-[#d4a83c]")}>{phaseText}</span>
         </div>
       </div>
 
-      {/* Broadcast Area */}
-      <div className="flex-1 flex items-stretch gap-3 bg-black/25 border border-white/5 rounded-xl px-3 py-2 h-20 overflow-hidden">
+      {/* Broadcast Area — the tabletop host's banner */}
+      <div className="flex-1 flex items-stretch gap-3 bg-black/25 border border-[color:var(--border-gilded)] rounded-[10px] px-3 py-2 h-20 overflow-hidden">
         <div className="flex flex-col items-center justify-center shrink-0 w-12">
-          <div className="w-[38px] h-[38px] flex items-center justify-center text-[1.3rem] bg-gradient-to-br from-yellow-600 to-yellow-800 rounded-lg border border-[#c9a84c]/50">
-            ⚖️
+          <div className="w-[38px] h-[38px] flex items-center justify-center bg-gradient-to-br from-[#8b6914] to-[#5a4410] rounded-lg border border-[#c5a059]/60 text-[#f4d9a0]">
+            <Gavel className="w-5 h-5" strokeWidth={1.5} />
           </div>
-          <span className="text-[0.6rem] text-[#f4d03f]/70 mt-[3px] tracking-[1px]">法官</span>
+          <span className="text-[0.6rem] text-[#f4d03f]/70 mt-[3px] tracking-[1px] font-display">法官</span>
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col justify-center">

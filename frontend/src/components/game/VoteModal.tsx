@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Vote, Users, BarChart3, Ban, Crown, Check, Clock } from 'lucide-react'
 import { useGameStore } from '../../store/useGameStore'
 import { cn } from '../../lib/utils'
 import type { VoteRecord } from '../../types'
@@ -163,18 +164,18 @@ export function VoteModal({
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className="relative w-full max-w-4xl mx-4 bg-gradient-to-b from-[#1a1028] to-[#0f0a1a] border-2 border-white/10 rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden animate-scale-in outline-none"
+        className="relative w-full max-w-4xl mx-4 bg-gradient-to-b from-[#1a1712] to-[#0d0b08] border border-[color:var(--border-gilded-strong)] rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden animate-scale-in outline-none"
       >
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 bg-gradient-to-r from-blue-500/15 to-transparent border-b border-white/10">
+        <div className="flex items-center justify-between px-6 py-5 bg-gradient-to-r from-[#8b6914]/20 to-transparent border-b border-[color:var(--border-gilded)]">
           <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-800 rounded-xl flex items-center justify-center text-2xl">
-              🗳️
+            <div className="w-12 h-12 bg-gradient-to-br from-[#8b6914] to-[#5a4410] rounded-xl flex items-center justify-center text-[#f4d9a0]">
+              <Vote className="w-6 h-6" strokeWidth={1.5} />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">{title}</h2>
-              <p className="text-sm text-gray-400">{description}</p>
+              <h2 className="font-display text-xl font-bold text-parchment tracking-wide">{title}</h2>
+              <p className="text-sm text-parchment-dim">{description}</p>
             </div>
           </div>
           <div className="relative flex items-center justify-center">
@@ -189,13 +190,13 @@ export function VoteModal({
         </div>
 
         {/* Progress Bar */}
-        <div className="px-6 py-3 bg-black/30 border-b border-white/10">
+        <div className="px-6 py-3 bg-black/30 border-b border-[color:var(--border-gilded)]">
           <div className="flex justify-between mb-2">
-            <span className="text-gray-400 text-sm">投票进度</span>
-            <span className="text-white text-sm font-bold">{votedCount}/{totalVoters}</span>
+            <span className="text-parchment-dim text-sm">投票进度</span>
+            <span className="text-parchment text-sm font-bold">{votedCount}/{totalVoters}</span>
           </div>
           <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500" style={{ width: `${voteProgressPercent}%` }}></div>
+            <div className="h-full bg-gradient-to-r from-[#8b6914] to-[#c5a059] rounded-full transition-all duration-500" style={{ width: `${voteProgressPercent}%` }}></div>
           </div>
         </div>
 
@@ -203,8 +204,8 @@ export function VoteModal({
         <div className="grid grid-cols-[2fr_1fr] gap-5 p-6 max-h-[50vh] overflow-hidden">
 
           <div className="candidates-section overflow-y-auto">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-400 mb-4">
-              <span className="text-base">👥</span>
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-parchment-dim mb-4">
+              <Users className="w-4 h-4" strokeWidth={1.5} />
               {voteType === 'sheriff' ? '警长候选人' : voteType === 'pk' ? 'PK候选人' : '投票目标'}
             </h3>
 
@@ -217,8 +218,8 @@ export function VoteModal({
                   disabled={hasVoted}
                   aria-pressed={selectedTarget === candidate.id}
                   className={cn(
-                    "relative flex flex-col items-center p-4 bg-white/5 border-2 border-transparent rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 hover:bg-white/10 hover:border-purple-400/50 disabled:cursor-not-allowed disabled:hover:translate-y-0",
-                    selectedTarget === candidate.id && "bg-blue-500/20 border-blue-500 shadow-[0_2px_8px_rgba(0,0,0,0.3)]",
+                    "relative flex flex-col items-center p-4 bg-white/5 border-2 border-transparent rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 hover:bg-white/10 hover:border-[#c5a059]/50 disabled:cursor-not-allowed disabled:hover:translate-y-0",
+                    selectedTarget === candidate.id && "bg-[#8b6914]/25 border-[#c5a059] shadow-[0_2px_8px_rgba(0,0,0,0.3)]",
                     leadingCandidateId === candidate.id && "border-yellow-500/80",
                     myVoteTarget === candidate.id && "bg-green-500/10 border-green-500"
                   )}
@@ -239,11 +240,11 @@ export function VoteModal({
                   )}
 
                   {candidate.is_sheriff && (
-                    <div className="absolute -top-1 -left-1 w-6 h-6 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center text-xs shadow-md">👮</div>
+                    <div className="absolute -top-1 -left-1 w-6 h-6 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center shadow-md text-black"><Crown className="w-3.5 h-3.5" strokeWidth={2} /></div>
                   )}
 
                   {selectedTarget === candidate.id && (
-                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold animate-bounce shadow-md">✓</div>
+                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-6 h-6 bg-[#c5a059] rounded-full flex items-center justify-center text-black animate-bounce shadow-md"><Check className="w-3.5 h-3.5" strokeWidth={2.5} /></div>
                   )}
 
                   {leadingCandidateId === candidate.id && getVoteCount(candidate.id) > 0 && (
@@ -261,18 +262,18 @@ export function VoteModal({
               aria-pressed={selectedTarget === 0}
               className={cn(
                 "w-full flex items-center justify-center gap-2 p-3 bg-white/5 border-2 border-dashed border-white/20 rounded-lg cursor-pointer transition-colors hover:bg-white/10 disabled:cursor-not-allowed",
-                selectedTarget === 0 && "bg-blue-500/20 border-blue-500"
+                selectedTarget === 0 && "bg-[#8b6914]/25 border-[#c5a059]"
               )}
             >
-              <span>🚫</span>
-              <span className="text-white/80 font-medium">弃票</span>
-              {abstainCount > 0 && <span className="text-gray-400 text-sm">({abstainCount}人弃票)</span>}
+              <Ban className="w-4 h-4 text-parchment-dim" strokeWidth={1.5} />
+              <span className="text-parchment font-medium">弃票</span>
+              {abstainCount > 0 && <span className="text-parchment-dim text-sm">({abstainCount}人弃票)</span>}
             </button>
           </div>
 
-          <div className="vote-records-section pl-5 border-l border-white/10 flex flex-col">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-400 mb-4">
-              <span className="text-base">📊</span>
+          <div className="vote-records-section pl-5 border-l border-[color:var(--border-gilded)] flex flex-col">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-parchment-dim mb-4">
+              <BarChart3 className="w-4 h-4" strokeWidth={1.5} />
               投票记录
             </h3>
 
@@ -298,8 +299,8 @@ export function VoteModal({
               ))}
 
               {voteRecords.length === 0 && (
-                <div className="h-full flex flex-col items-center justify-center text-gray-500 py-10">
-                  <span className="text-2xl mb-2 opacity-50">⏳</span>
+                <div className="h-full flex flex-col items-center justify-center text-parchment-dim py-10">
+                  <Clock className="w-7 h-7 mb-2 opacity-50" strokeWidth={1.5} />
                   <span className="text-sm">等待玩家投票...</span>
                 </div>
               )}
@@ -312,13 +313,13 @@ export function VoteModal({
           <div className="flex items-center">
             {isSheriff && (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-500/20 border border-yellow-500/30 rounded-lg mr-3">
-                <span>👮</span>
+                <Crown className="w-4 h-4 text-yellow-500" strokeWidth={1.5} />
                 <span className="text-sm text-yellow-500/90">你是警长，你的票数为 <strong>2票</strong></span>
               </div>
             )}
             {hasVoted && (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 border border-green-500/30 rounded-lg">
-                <span className="text-green-500">✓</span>
+                <Check className="w-4 h-4 text-green-500" strokeWidth={2} />
                 <span className="text-sm text-green-500/90">你已投票给 {(myVoteTarget && myVoteTarget !== 0) ? <strong>{myVoteTarget}号</strong> : <strong>弃票</strong>}</span>
               </div>
             )}
@@ -336,7 +337,7 @@ export function VoteModal({
               <button
                 disabled={selectedTarget === null || isSubmitting}
                 onClick={confirmVote}
-                className="px-6 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:bg-gray-700 disabled:text-gray-500 flex items-center justify-center min-w-[120px]"
+                className="px-6 py-2 rounded bg-[#8b6914] text-[#f4d9a0] font-bold border border-[color:var(--border-gilded-strong)] hover:bg-[#a07a1a] transition-colors disabled:opacity-50 disabled:bg-black/40 disabled:text-parchment-dim flex items-center justify-center min-w-[120px]"
               >
                 {isSubmitting ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>

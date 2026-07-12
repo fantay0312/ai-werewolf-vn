@@ -27,7 +27,7 @@ function highlightText(fullText: string) {
       return <span key={i} className="highlight-player text-sky-400 font-semibold">{part}</span>
     }
     if (ROLE_RE.test(part)) {
-      return <span key={i} className="highlight-role text-purple-400 font-semibold">{part}</span>
+      return <span key={i} className="highlight-role text-[#c5a059] font-semibold">{part}</span>
     }
     if (ACTION_RE.test(part)) {
       return <span key={i} className="highlight-action text-rose-400 font-semibold">{part}</span>
