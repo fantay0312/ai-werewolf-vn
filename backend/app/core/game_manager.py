@@ -99,15 +99,13 @@ ACTION_DISPLAY_NAMES = {
     ActionType.SELF_EXPLODE: "自爆",
 }
 
-# Portrait asset mapping
+# Portrait asset mapping (filenames match role keys, see frontend/public/images/README.md)
 PORTRAIT_MAP = {
-    Role.VILLAGER: "/images/portraits/村民.jpg",
-    Role.WOLF: "/images/portraits/狼人.png",
-    Role.WOLF_KING: "/images/portraits/狼王.png",
-    Role.SEER: "/images/portraits/预言家.jpg",
-    Role.WITCH: "/images/portraits/女巫.png",
-    Role.GUARD: "/images/portraits/守卫.png",
-    Role.HUNTER: "/images/portraits/猎人.png",
+    role: f"/images/portraits/{role.value}.webp"
+    for role in (
+        Role.VILLAGER, Role.WOLF, Role.WOLF_KING, Role.SEER,
+        Role.WITCH, Role.GUARD, Role.HUNTER,
+    )
 }
 
 # Phase -> broadcast type mapping
@@ -336,7 +334,7 @@ class GameManager:
         players = []
         for i, role in enumerate(roles):
             is_human = (i == 0)
-            portrait = PORTRAIT_MAP.get(role, "/images/portraits/村民.jpg")
+            portrait = PORTRAIT_MAP.get(role, "/images/portraits/villager.webp")
 
             player = Player(
                 id=i + 1,
