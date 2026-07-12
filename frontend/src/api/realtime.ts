@@ -162,7 +162,7 @@ export class RealtimeConnection {
 
     let ticket: string
     try {
-      const res = await gameApi.fetchSseTicket(this.playerToken)
+      const res = await gameApi.fetchSseTicket(sessionId, this.playerToken, this.viewerId)
       if (!this.isCurrent(gen)) return
       ticket = res.ticket
     } catch (err) {

@@ -5,7 +5,6 @@ interface Message {
   id?: string
   speakerName: string
   content: string
-  timestamp?: number
 }
 
 interface DiscussionDialogProps {
@@ -14,9 +13,8 @@ interface DiscussionDialogProps {
 }
 
 export function DiscussionDialog({ messages, visible }: DiscussionDialogProps) {
-  const gameStore = useGameStore()
-  const currentPhase = gameStore.gameState?.phase
-  
+  const currentPhase = useGameStore(state => state.gameState?.phase)
+
   const dialogTitle = useMemo(() => {
     if (currentPhase === 'NIGHT_WOLF_DISCUSS') return '狼人讨论'
     if (currentPhase === 'DAY_DISCUSS') return '玩家讨论'
@@ -37,11 +35,6 @@ export function DiscussionDialog({ messages, visible }: DiscussionDialogProps) {
     }
     setLastMessageCount(messages.length)
     setIsHidden(true)
-  }
-
-  function formatTime(timestamp: number) {
-    const d = new Date(timestamp)
-    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
   }
 
   useEffect(() => {
@@ -98,12 +91,9 @@ export function DiscussionDialog({ messages, visible }: DiscussionDialogProps) {
 
             <div className="p-4 overflow-y-auto overflow-x-hidden flex-1 max-h-[330px] scroll-smooth scrollbar-thin scrollbar-thumb-white/15 hover:scrollbar-thumb-white/25 scrollbar-track-black/20" ref={messagesContainerRef}>
               {messages.map((message, index) => (
-                <div key={message.id || index} className="mb-3 last:mb-0 animate-slide-up-fade">
+                <div key={message.id ?? index} className="mb-3 last:mb-0 animate-slide-up-fade">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-bold text-[0.9rem] text-sky-400 tracking-[0.5px]">{message.speakerName}</span>
-                    {message.timestamp ? (
-                      <span className="text-[0.75rem] text-white/50">{formatTime(message.timestamp)}</span>
-                    ) : null}
                   </div>
                   <div className="text-white/95 text-[0.95rem] leading-relaxed break-words">
                     {message.content}

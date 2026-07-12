@@ -2,13 +2,17 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useGameStore } from '../../store/useGameStore'
 import { PHASE_NAMES, type GameLog } from '../../types'
 import { cn } from '../../lib/utils'
+import { isNightPhase, stripSpeakerPrefix } from '../../lib/phases'
 
 export function JudgeArea() {
-  const gameStore = useGameStore()
   const broadcastContainerRef = useRef<HTMLDivElement>(null)
 
-  const currentPhase = gameStore.gameState?.phase || ''
-  const currentDay = gameStore.gameState?.day || 1
+  // Narrow subscriptions: only re-render when these slices change.
+  const currentPhase = useGameStore(state => state.gameState?.phase || '')
+  const currentDay = useGameStore(state => state.gameState?.day || 1)
+  const timeRemaining = useGameStore(state => state.gameState?.time_remaining)
+  const gameLogs = useGameStore(state => state.gameState?.game_logs)
+  const players = useGameStore(state => state.gameState?.players)
 
   const PHASE_TIME_LIMITS: Record<string, number> = {
     NIGHT_WOLF_DISCUSS: 45,
@@ -24,18 +28,18 @@ export function JudgeArea() {
   }
 
   const showTimer = currentPhase in PHASE_TIME_LIMITS
-  const isNight = currentPhase.startsWith('NIGHT_')
+  const isNight = isNightPhase(currentPhase)
   const phaseText = PHASE_NAMES[currentPhase as keyof typeof PHASE_NAMES] || currentPhase
   const maxTime = PHASE_TIME_LIMITS[currentPhase]
 
-  const localTimeRemaining = gameStore.gameState?.time_remaining ?? (maxTime || 60)
+  const localTimeRemaining = timeRemaining ?? (maxTime || 60)
   const timerProgress = (localTimeRemaining / (maxTime || 60)) * 100
   const timerColorClass = timerProgress > 60 ? 'text-green-400 stroke-green-400' : timerProgress > 30 ? 'text-yellow-400 stroke-yellow-400' : 'text-red-400 stroke-red-400 animate-pulse'
 
   const recentBroadcasts = useMemo(() => {
-    const logs = gameStore.gameState?.game_logs || []
+    const logs = gameLogs || []
     return logs.filter(log => log.is_public).slice(-8)
-  }, [gameStore.gameState?.game_logs])
+  }, [gameLogs])
 
   useEffect(() => {
     if (broadcastContainerRef.current) {
@@ -54,7 +58,7 @@ export function JudgeArea() {
 
   function getSpeakerAvatarClass(log: GameLog) {
     if (!log.player_id) return 'bg-gradient-to-br from-yellow-500 to-yellow-700 border-yellow-500/60 text-[0.75rem]'
-    const player = gameStore.gameState?.players.find(p => p.id === log.player_id)
+    const player = players?.find(p => p.id === log.player_id)
     if (!player) return 'bg-gradient-to-br from-gray-700 to-gray-900 border-white/15'
     if (player.is_human) return 'bg-gradient-to-br from-blue-500 to-blue-800 border-blue-400'
     if (!player.is_alive) return 'bg-gradient-to-br from-gray-600 to-gray-800 border-white/15 opacity-60'
@@ -66,7 +70,7 @@ export function JudgeArea() {
   }
 
   function formatContent(log: GameLog) {
-    return log.player_id ? log.content.replace(new RegExp(`^${log.player_id}号[：::]\\s*`), '') : log.content
+    return stripSpeakerPrefix(log.content, log.player_id)
   }
 
   function getTypeBorderClass(type: string) {

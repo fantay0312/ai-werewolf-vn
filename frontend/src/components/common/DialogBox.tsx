@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useGameStore } from '../../store/useGameStore'
 import { TypeWriter } from '../ui/TypeWriter'
-import { ROLE_NAMES, type Role, getRoleCamp } from '../../types'
+import type { Role } from '../../types'
+import { getCampBadgeClass, getRoleName } from '../../lib/roles'
 
 export function DialogBox() {
   const [dismissedLogId, setDismissedLogId] = useState<string | null>(null)
@@ -21,12 +22,14 @@ export function DialogBox() {
     return latestSpeechLog
   }, [latestSpeechLog, dismissedLogId])
 
-  // Auto-expand when new speech arrives
+  // Auto-expand when new speech arrives. Depend only on the log id (the sole
+  // value read) so the effect satisfies exhaustive-deps without suppression.
+  const currentLogId = currentLog?.id
   useEffect(() => {
-    if (currentLog) {
+    if (currentLogId) {
       setMinimized(false)
     }
-  }, [currentLog?.id])
+  }, [currentLogId])
 
   const speaker = useMemo(() => {
     if (!currentLog?.player_id) return null
@@ -46,20 +49,22 @@ export function DialogBox() {
 
   const roleBadgeClass = useMemo(() => {
     if (!speaker) return ''
-    return getRoleCamp(speaker.role as Role) === 'wolf' ? 'badge-wolf' : 'badge-good'
+    return getCampBadgeClass(speaker.role as Role)
   }, [speaker])
 
   const isTypingComplete = currentLog ? completedLogId === currentLog.id : false
 
+  // Dismiss the finished dialog on any key. Uses keydown (not keypress) so that
+  // Escape — which keypress never fires — also closes it.
   useEffect(() => {
-    function handleKeyPress() {
+    function handleKeyDown() {
       if (currentLog && isTypingComplete && !minimized) {
         setDismissedLogId(currentLog.id)
         setCompletedLogId(null)
       }
     }
-    window.addEventListener('keypress', handleKeyPress)
-    return () => window.removeEventListener('keypress', handleKeyPress)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
   }, [currentLog, isTypingComplete, minimized])
 
   if (!currentLog) return null
@@ -74,7 +79,7 @@ export function DialogBox() {
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
         </svg>
-        <span>{speakerLabel}号发言</span>
+        <span>{speakerLabel}发言</span>
       </button>
     )
   }
@@ -92,7 +97,7 @@ export function DialogBox() {
             <span className="text-sm font-bold text-white truncate">{speakerLabel}</span>
             {showRoleBadge && (
               <span className={`${roleBadgeClass} text-[10px] px-1.5 py-0.5`}>
-                {ROLE_NAMES[speaker?.role as Role]}
+                {getRoleName(speaker?.role ?? '')}
               </span>
             )}
           </div>

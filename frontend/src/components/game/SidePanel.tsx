@@ -2,7 +2,9 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { GameIcon } from '../common/GameIcon'
 import { useGameStore } from '../../store/useGameStore'
 import { cn } from '../../lib/utils'
-import { PHASE_NAMES, ROLE_NAMES, type Player, type Role } from '../../types'
+import { PHASE_NAMES, type Player } from '../../types'
+import { getRoleName, getRoleTextClass } from '../../lib/roles'
+import { stripSpeakerPrefix } from '../../lib/phases'
 
 type TabType = 'players' | 'logs' | 'wolf'
 
@@ -89,32 +91,12 @@ export function SidePanel({ onOpenWolfModal }: SidePanelProps) {
     return false
   }
 
-  function getRoleBadgeClass(role: string): string {
-    const classes: Record<string, string> = {
-      wolf: 'role-wolf',
-      wolf_king: 'role-wolf-king',
-      seer: 'role-seer',
-      witch: 'role-witch',
-      guard: 'role-guard',
-      hunter: 'role-hunter',
-      villager: 'role-villager'
-    }
-    return classes[role] || 'role-villager'
-  }
-
   function getLogAvatarClass(playerId: number): string {
     const player = players.find(p => p.id === playerId)
     if (!player) return 'avatar-default'
     if (player.is_human) return 'avatar-me'
     if (!player.is_alive) return 'avatar-dead'
     return 'avatar-default'
-  }
-
-  function formatLogContent(content: string, playerId: number | undefined): string {
-    if (playerId) {
-      return content.replace(new RegExp(`^${playerId}号[：::]\\s*`), '')
-    }
-    return content
   }
 
   const tabs: {id: TabType, label: string, icon: string}[] = [
@@ -186,7 +168,7 @@ export function SidePanel({ onOpenWolfModal }: SidePanelProps) {
                   </div>
                   {shouldShowRole(player) && (
                     <div className="player-role mt-0.5 text-xs font-medium">
-                      <span className={getRoleBadgeClass(player.role)}>{ROLE_NAMES[player.role as Role] || player.role}</span>
+                      <span className={getRoleTextClass(player.role)}>{getRoleName(player.role)}</span>
                     </div>
                   )}
                 </div>
@@ -216,7 +198,7 @@ export function SidePanel({ onOpenWolfModal }: SidePanelProps) {
                       {log.player_id ? `${log.player_id}号玩家` : '系统'}
                     </span>
                     <span className="log-message block text-white/85 text-sm word-break">
-                      {formatLogContent(log.content, log.player_id)}
+                      {stripSpeakerPrefix(log.content, log.player_id)}
                     </span>
                   </div>
                 </div>
@@ -249,7 +231,7 @@ export function SidePanel({ onOpenWolfModal }: SidePanelProps) {
                 </div>
                 <div className="wolf-messages flex-1 overflow-y-auto p-2">
                   {wolfDiscussMessages.map((msg, index) => (
-                    <div key={index} className="wolf-message p-2 mb-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+                    <div key={msg.id || `${msg.speaker_id}-${msg.round}-${index}`} className="wolf-message p-2 mb-2 bg-red-500/10 border border-red-500/20 rounded-lg">
                       <span className="wolf-sender text-red-400 font-bold mr-1">{msg.speaker_id}号:</span>
                       <span className="wolf-text text-white/90">{msg.content}</span>
                       <div className="wolf-meta text-[10px] text-red-400/50 mt-1">第{msg.round}轮</div>

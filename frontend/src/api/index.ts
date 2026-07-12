@@ -105,8 +105,19 @@ export const gameApi = {
   },
 
   // Request a short-lived, single-use SSE ticket for EventSource auth.
-  async fetchSseTicket(playerToken?: string | null): Promise<SseTicketResponse> {
+  // Backend expects session_id (and optional viewer_id) as query params; auth
+  // still travels in the X-Player-Token header.
+  async fetchSseTicket(
+    sessionId: string,
+    playerToken?: string | null,
+    viewerId?: number
+  ): Promise<SseTicketResponse> {
+    const params: Record<string, string> = { session_id: sessionId }
+    if (viewerId !== undefined) {
+      params.viewer_id = String(viewerId)
+    }
     const response = await apiClient.post<SseTicketResponse>('/sse/ticket', undefined, {
+      params,
       headers: buildRequestHeaders(playerToken),
     })
     return response.data

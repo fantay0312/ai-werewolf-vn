@@ -1,65 +1,66 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../../store/useGameStore'
 import { cn } from '../../lib/utils'
+import type { VoteRecord } from '../../types'
 
-interface VoteRecord {
-  voterId: number
-  targetId: number | null
-  weight: number
-}
+type VoteType = 'sheriff' | 'exile' | 'pk'
 
 interface VoteModalProps {
-  isOpen?: boolean
-  visible?: boolean
+  isOpen: boolean
   onClose: () => void
   onVote?: (targetId: number | null) => void
-  onVoted?: (targetId: number | null) => void
-  voteType?: 'sheriff' | 'exile'
+  voteType?: VoteType
   timeRemaining?: number
   voteRecords?: VoteRecord[]
-  allowClose?: boolean
 }
 
 export function VoteModal({
   isOpen,
-  visible,
   onClose,
   onVote,
-  onVoted,
   voteType = 'exile',
   timeRemaining = 60,
   voteRecords = [],
-  allowClose = true
 }: VoteModalProps) {
-  const isVisible = isOpen ?? visible ?? false
   const [selectedTarget, setSelectedTarget] = useState<number | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const recordsListRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
 
-  const gameStore = useGameStore()
-  const myPlayerId = gameStore.gameState?.players.find(p => p.is_human)?.id
+  // Narrow subscriptions so store churn (loading ticks, error, etc.) doesn't
+  // re-render the whole modal.
+  const players = useGameStore(state => state.gameState?.players)
+  const sheriffCandidateIds = useGameStore(state => state.gameState?.sheriff_candidate_ids)
+  const pkCandidates = useGameStore(state => state.gameState?.pk_candidates)
+  const submitAction = useGameStore(state => state.submitAction)
 
-  const title = voteType === 'sheriff' ? '警长投票' : '放逐投票'
-  const description = voteType === 'sheriff' ? '请为你支持的警长候选人投票' : '请选择你要放逐的玩家'
+  const myPlayerId = players?.find(p => p.is_human)?.id
 
-  const voteCandidates = gameStore.gameState?.players.filter(p => {
+  const title = voteType === 'sheriff' ? '警长投票' : voteType === 'pk' ? 'PK投票' : '放逐投票'
+  const description =
+    voteType === 'sheriff' ? '请为你支持的警长候选人投票'
+      : voteType === 'pk' ? '请在PK候选人中选择'
+        : '请选择你要放逐的玩家'
+
+  // PK rounds MUST be restricted to the tied candidates; previously this fell
+  // through to "all alive players", inviting an illegal vote.
+  const voteCandidates = (players || []).filter(p => {
     if (!p.is_alive) return false
-    if (voteType === 'sheriff') {
-      return gameStore.gameState?.sheriff_candidate_ids?.includes(p.id) || false
-    }
+    if (voteType === 'sheriff') return sheriffCandidateIds?.includes(p.id) ?? false
+    if (voteType === 'pk') return pkCandidates?.includes(p.id) ?? false
     return p.id !== myPlayerId
-  }) || []
+  })
 
-  const totalVoters = gameStore.gameState?.players.filter(p => p.is_alive).length || 0
+  const totalVoters = players?.filter(p => p.is_alive).length ?? 0
   const votedCount = voteRecords.length
   const voteProgressPercent = totalVoters === 0 ? 0 : Math.round((votedCount / totalVoters) * 100)
   const countdownProgress = Math.round((timeRemaining / 60) * 100)
-  
+
   const countdownColorClass = timeRemaining <= 10 ? 'text-red-500' : timeRemaining <= 30 ? 'text-yellow-500' : 'text-green-500'
 
   const { voteCountMap, leadingCandidateId } = (() => {
     const counts: Record<number, number> = {}
-    const sheriffId = gameStore.gameState?.players.find(p => p.is_sheriff)?.id
+    const sheriffId = players?.find(p => p.is_sheriff)?.id
     let maxVotes = 0
     let leaderId: number | null = null
 
@@ -88,13 +89,18 @@ export function VoteModal({
 
   const hasVoted = voteRecords.some(r => r.voterId === myPlayerId)
   const myVoteTarget = voteRecords.find(r => r.voterId === myPlayerId)?.targetId
-  const isSheriff = gameStore.gameState?.players.find(p => p.id === myPlayerId)?.is_sheriff
+  const isSheriff = players?.find(p => p.id === myPlayerId)?.is_sheriff
 
   useEffect(() => {
     if (recordsListRef.current) {
       recordsListRef.current.scrollTop = recordsListRef.current.scrollHeight
     }
   }, [voteRecords.length])
+
+  // Move focus into the dialog on open (basic a11y).
+  useEffect(() => {
+    if (isOpen) dialogRef.current?.focus()
+  }, [isOpen])
 
   function getVoteCount(candidateId: number) {
     return voteCountMap[candidateId] || 0
@@ -109,9 +115,10 @@ export function VoteModal({
     if (selectedTarget === null || isSubmitting || hasVoted) return
     setIsSubmitting(true)
     try {
+      // Abstain (0) maps to no target_id — the single abstain encoding for votes.
       const targetId = selectedTarget === 0 ? null : selectedTarget
-      await gameStore.submitAction('vote', targetId !== null ? targetId : undefined)
-      ;(onVote ?? onVoted)?.(targetId)
+      await submitAction('vote', targetId ?? undefined)
+      onVote?.(targetId)
       setSelectedTarget(null)
     } catch {
       console.error('投票失败')
@@ -121,18 +128,38 @@ export function VoteModal({
   }
 
   function handleClose() {
-    if (!allowClose && !hasVoted) return
     onClose()
     setSelectedTarget(null)
   }
 
-  if (!isVisible) return null
+  // Escape closes the modal (dismissal is always legal — GameRoom re-opens it on
+  // the next state sync, and ActionPanel offers a reopen button).
+  useEffect(() => {
+    if (!isOpen) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        onClose()
+        setSelectedTarget(null)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={handleClose}></div>
-      <div className="relative w-full max-w-4xl mx-4 bg-gradient-to-b from-[#1a1028] to-[#0f0a1a] border-2 border-white/10 rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden animate-scale-in">
-        
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        className="relative w-full max-w-4xl mx-4 bg-gradient-to-b from-[#1a1028] to-[#0f0a1a] border-2 border-white/10 rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden animate-scale-in outline-none"
+      >
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 bg-gradient-to-r from-blue-500/15 to-transparent border-b border-white/10">
           <div className="flex items-center space-x-3">
@@ -168,20 +195,23 @@ export function VoteModal({
 
         {/* Body */}
         <div className="grid grid-cols-[2fr_1fr] gap-5 p-6 max-h-[50vh] overflow-hidden">
-          
+
           <div className="candidates-section overflow-y-auto">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-400 mb-4">
               <span className="text-base">👥</span>
-              {voteType === 'sheriff' ? '警长候选人' : '投票目标'}
+              {voteType === 'sheriff' ? '警长候选人' : voteType === 'pk' ? 'PK候选人' : '投票目标'}
             </h3>
-            
+
             <div className="grid grid-cols-[repeat(auto-fill,minmax(100px,1fr))] gap-3 mb-4">
               {voteCandidates.map(candidate => (
-                <div 
+                <button
+                  type="button"
                   key={candidate.id}
                   onClick={() => handleSelectTarget(candidate.id)}
+                  disabled={hasVoted}
+                  aria-pressed={selectedTarget === candidate.id}
                   className={cn(
-                    "relative flex flex-col items-center p-4 bg-white/5 border-2 border-transparent rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 hover:bg-white/10 hover:border-purple-400/50",
+                    "relative flex flex-col items-center p-4 bg-white/5 border-2 border-transparent rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 hover:bg-white/10 hover:border-purple-400/50 disabled:cursor-not-allowed disabled:hover:translate-y-0",
                     selectedTarget === candidate.id && "bg-blue-500/20 border-blue-500 shadow-[0_2px_8px_rgba(0,0,0,0.3)]",
                     leadingCandidateId === candidate.id && "border-yellow-500/80",
                     myVoteTarget === candidate.id && "bg-green-500/10 border-green-500"
@@ -214,21 +244,24 @@ export function VoteModal({
                     <div className="absolute top-2 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-gradient-to-r from-yellow-400 to-yellow-600 text-gray-900 text-[10px] font-bold rounded-lg whitespace-nowrap">领先</div>
                   )}
 
-                </div>
+                </button>
               ))}
             </div>
 
-            <div 
+            <button
+              type="button"
               onClick={() => handleSelectTarget(0)}
+              disabled={hasVoted}
+              aria-pressed={selectedTarget === 0}
               className={cn(
-                "flex items-center justify-center gap-2 p-3 bg-white/5 border-2 border-dashed border-white/20 rounded-lg cursor-pointer transition-colors hover:bg-white/10",
+                "w-full flex items-center justify-center gap-2 p-3 bg-white/5 border-2 border-dashed border-white/20 rounded-lg cursor-pointer transition-colors hover:bg-white/10 disabled:cursor-not-allowed",
                 selectedTarget === 0 && "bg-blue-500/20 border-blue-500"
               )}
             >
               <span>🚫</span>
               <span className="text-white/80 font-medium">弃票</span>
               {abstainCount > 0 && <span className="text-gray-400 text-sm">({abstainCount}人弃票)</span>}
-            </div>
+            </button>
           </div>
 
           <div className="vote-records-section pl-5 border-l border-white/10 flex flex-col">
@@ -236,7 +269,7 @@ export function VoteModal({
               <span className="text-base">📊</span>
               投票记录
             </h3>
-            
+
             <div className="flex-1 overflow-y-auto space-y-2 pr-2" ref={recordsListRef}>
               {sortedVoteRecords.map((record) => (
                 <div key={record.voterId} className={cn(
@@ -284,10 +317,10 @@ export function VoteModal({
               </div>
             )}
           </div>
-          
+
           <div className="flex items-center gap-3">
-            <button 
-              onClick={handleClose} 
+            <button
+              onClick={handleClose}
               disabled={isSubmitting}
               className="px-6 py-2 rounded-lg bg-white/10 text-white/80 hover:bg-white/20 transition-colors disabled:opacity-50"
             >

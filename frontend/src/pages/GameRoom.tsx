@@ -11,6 +11,8 @@ import { WolfDiscussionModal } from '../components/game/WolfDiscussionModal'
 import { VoteModal } from '../components/game/VoteModal'
 import { NightActionAnimation } from '../components/game/NightActionAnimation'
 import { DiscussionDialog } from '../components/game/DiscussionDialog'
+import { GameOverOverlay } from '../components/game/GameOverOverlay'
+import { getSelectionMode, isNightActionPhase, isNightPhase } from '../lib/phases'
 import type { GameLog, VoteRecord, WolfDiscussMessage } from '../types'
 
 const RECOVERY_TIMEOUT_MS = 12000
@@ -42,7 +44,11 @@ export function GameRoom() {
   
   const [showWolfModal, setShowWolfModal] = useState(false)
   const [showVoteModal, setShowVoteModal] = useState(false)
-  const [voteType, setVoteType] = useState<'exile' | 'sheriff'>('exile')
+  const [voteType, setVoteType] = useState<'exile' | 'sheriff' | 'pk'>('exile')
+
+  // Single source of truth for the pending seat target. Seat clicks (GameTable)
+  // and the ActionPanel controls both read/write this — one confirm path.
+  const [selectedTargetId, setSelectedTargetId] = useState<number | null>(null)
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | undefined
@@ -61,15 +67,22 @@ export function GameRoom() {
     }
   }, [isLoading, loadingStartTime])
 
-  const isInNightActionPhase = useMemo(() => {
-    const nightActionPhases = [
-      'NIGHT_WOLF_DISCUSS',
-      'NIGHT_WOLF_VOTE', 
-      'NIGHT_SEER',
-      'NIGHT_WITCH',
-      'NIGHT_GUARD'
-    ]
-    return nightActionPhases.includes(currentPhase)
+  const isInNightActionPhase = isNightActionPhase(currentPhase)
+
+  // Table selection wiring: which seat-selection mode is active, and whose turn
+  // it is to speak.
+  const selectionMode = useMemo(() => getSelectionMode(currentPhase, myPlayer), [currentPhase, myPlayer])
+
+  const currentSpeakerId = useMemo(() => {
+    const order = gameState?.speaking_order
+    const idx = gameState?.current_speaker_index
+    if (!order || idx === undefined || idx < 0 || idx >= order.length) return null
+    return order[idx] ?? null
+  }, [gameState?.speaking_order, gameState?.current_speaker_index])
+
+  // Clear the pending target whenever the phase changes.
+  useEffect(() => {
+    setSelectedTargetId(null)
   }, [currentPhase])
 
   const isCurrentActionRole = useMemo(() => {
@@ -157,30 +170,7 @@ export function GameRoom() {
 
   const timeRemaining = gameState?.time_remaining || 60
 
-  const winnerText = useMemo(() => {
-    if (winner === 'wolf') return '狼人阵营胜利!'
-    if (winner === 'good') return '好人阵营胜利!'
-    return '游戏结束'
-  }, [winner])
-
-  const winnerTextClass = useMemo(() => {
-    if (winner === 'wolf') return 'text-red-500'
-    if (winner === 'good') return 'text-green-500'
-    return 'text-yellow-500'
-  }, [winner])
-
-  const isNight = useMemo(() => {
-    const nightPhases = [
-      'NIGHT_START',
-      'NIGHT_WOLF_DISCUSS',
-      'NIGHT_WOLF_VOTE',
-      'NIGHT_SEER',
-      'NIGHT_WITCH',
-      'NIGHT_GUARD',
-      'NIGHT_RESOLVE'
-    ]
-    return nightPhases.includes(currentPhase)
-  }, [currentPhase])
+  const isNight = isNightPhase(currentPhase)
 
   // Watch for phase changes to auto-open modals
   useEffect(() => {
@@ -195,8 +185,11 @@ export function GameRoom() {
       setShowWolfModal(false)
     }
 
-    if (phase === 'DAY_VOTE' || phase === 'DAY_PK_VOTE') {
+    if (phase === 'DAY_VOTE') {
       setVoteType('exile')
+      setShowVoteModal(true)
+    } else if (phase === 'DAY_PK_VOTE') {
+      setVoteType('pk')
       setShowVoteModal(true)
     } else if (phase === 'SHERIFF_VOTE' && !isCandidate) {
       setVoteType('sheriff')
@@ -327,6 +320,14 @@ export function GameRoom() {
       {/* Vignette effect */}
       <div className="absolute inset-0 z-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(0,0,0,0.2)_50%,rgba(0,0,0,0.6)_100%)]" />
 
+      {/* Spectator banner: the human is out but information keeps flowing. */}
+      {myPlayer && !myPlayer.is_alive && !winner && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full border border-white/10 bg-slate-900/80 px-4 py-1.5 text-sm text-white/70 shadow-lg backdrop-blur-md">
+          <span>👻</span>
+          <span>你已出局，进入观战模式 · 仍可查看公开信息</span>
+        </div>
+      )}
+
       {/* Main Game Area */}
       <div className="flex-1 flex flex-col relative z-10 min-w-0 overflow-hidden">
         <div className="h-[100px] shrink-0 z-10 w-full max-w-5xl mx-auto mt-4 px-4">
@@ -335,12 +336,21 @@ export function GameRoom() {
 
         <div className="flex-1 relative flex items-center justify-center py-4 px-8 overflow-hidden w-full h-full max-w-6xl mx-auto">
           <div className="w-full h-full flex items-center justify-center transform scale-90 sm:scale-100 lg:scale-105 transition-transform duration-500">
-            <GameTable />
+            <GameTable
+              selectionMode={selectionMode}
+              selectedTargetId={selectedTargetId}
+              currentSpeakerId={currentSpeakerId}
+              onSelectPlayer={(id) => setSelectedTargetId(prev => (prev === id ? null : id))}
+            />
           </div>
         </div>
 
         <div className="z-20 w-full shrink-0">
-          <ActionPanel />
+          <ActionPanel
+            selectedTargetId={selectedTargetId}
+            onSelectTarget={setSelectedTargetId}
+            onOpenVoteModal={() => setShowVoteModal(true)}
+          />
         </div>
       </div>
 
@@ -361,22 +371,13 @@ export function GameRoom() {
         onClose={() => setShowVoteModal(false)}
       />
 
-      {/* Game End Overlay */}
+      {/* Game End: winner + full role reveal + play again */}
       {winner && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="text-center p-8 bg-gray-900 rounded-lg border-2 border-yellow-500">
-            <h1 className={cn("text-4xl font-bold mb-4", winnerTextClass)}>
-              {winnerText}
-            </h1>
-            <p className="text-gray-400 mb-6">游戏结束</p>
-            <button
-              onClick={returnToHome}
-              className="px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold text-white transition-colors"
-            >
-              返回首页
-            </button>
-          </div>
-        </div>
+        <GameOverOverlay
+          winner={winner}
+          players={gameState.players}
+          onPlayAgain={returnToHome}
+        />
       )}
 
       {/* Loading Overlay */}
