@@ -1,4 +1,3 @@
-import React from 'react'
 import {
   Skull,
   Crown,
@@ -16,7 +15,7 @@ import {
   Shield,
   Crosshair,
   FlaskConical,
-  Ghost // Using Ghost for wolf if needed
+  Ghost
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
@@ -36,8 +35,9 @@ export function GameIcon({ name, size = 'md', color = 'currentColor', className 
     xl: 48
   }
 
+  const sizeValue = sizeMap[size]
   const iconProps = {
-    size: sizeMap[size],
+    size: sizeValue,
     color,
     className: cn('inline-flex items-center justify-center shrink-0 leading-none', className)
   }
@@ -60,6 +60,6 @@ export function GameIcon({ name, size = 'md', color = 'currentColor', className 
     case 'warning': return <AlertTriangle {...iconProps} />
     case 'players': return <Users {...iconProps} />
     case 'logs': return <ScrollText {...iconProps} />
-    default: return <span {...iconProps} style={{...iconProps.style, width: iconProps.size, height: iconProps.size}} />
+    default: return <span className={iconProps.className} style={{ width: sizeValue, height: sizeValue }} aria-hidden="true" />
   }
 }

@@ -50,7 +50,13 @@ yarn-error.log*
 
 # Build outputs
 frontend/dist/
+frontend/.vite/
 *.tsbuildinfo
+
+# Frontend source lib is real source, not a Python build dir. Re-include it so
+# the Python `lib/` rule above doesn't silently drop these modules from commits.
+!frontend/src/lib/
+!frontend/src/lib/**
 
 # IDE
 .vscode/
@@ -72,3 +78,6 @@ test_output.txt
 rule/
 rule/key.md
 frontend-vue/
+
+# Codex isolated worktree
+.fantayspec/codex-out/

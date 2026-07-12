@@ -57,10 +57,7 @@ class EventPresenter:
     ) -> dict[str, str]:
         payload = self.present(event, session_id=session_id, viewer_id=viewer_id)
         event_id = payload.get("event_id")
-        sse_event = {
-            "event": str(payload["event_type"]),
-            "data": json.dumps(payload, ensure_ascii=False),
-        }
+        sse_event = {"data": json.dumps(payload, ensure_ascii=False)}
         if event_id is not None:
             sse_event["id"] = str(event_id)
         return sse_event

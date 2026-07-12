@@ -178,11 +178,19 @@ class GameRulesConfig:
 
     # 警长规则
     sheriff_vote_weight: int = 2          # 警长投票权重
-    sheriff_poison_transfer: bool = False  # 警长被毒死能否传递警徽
+    poisoned_sheriff_loses_badge: bool = False  # 毒杀警长是否强制流失警徽
 
     # 投票规则
     tie_vote_no_execution: bool = True    # 平票是否无人出局
     pk_max_rounds: int = 2                # PK最大轮数
+
+    @classmethod
+    def from_env(cls) -> "GameRulesConfig":
+        return cls(
+            poisoned_sheriff_loses_badge=(
+                os.getenv("POISONED_SHERIFF_LOSES_BADGE", "false").lower() == "true"
+            ),
+        )
 
 
 @dataclass
@@ -204,8 +212,12 @@ class ServerConfig:
     rate_limit_create_game: int = 30
     rate_limit_player_action: int = 180
     rate_limit_admin: int = 60
+    trust_proxy_headers: bool = False
     metrics_enabled: bool = True
     metrics_require_admin: bool = True
+    sse_ticket_ttl_seconds: int = 30
+    sse_queue_capacity: int = 100
+    sse_heartbeat_seconds: int = 15
 
     @classmethod
     def from_env(cls, env: Environment | None = None) -> "ServerConfig":
@@ -237,8 +249,12 @@ class ServerConfig:
             rate_limit_create_game=int(os.getenv("RATE_LIMIT_CREATE_GAME", "30")),
             rate_limit_player_action=int(os.getenv("RATE_LIMIT_PLAYER_ACTION", "180")),
             rate_limit_admin=int(os.getenv("RATE_LIMIT_ADMIN", "60")),
+            trust_proxy_headers=os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true",
             metrics_enabled=os.getenv("METRICS_ENABLED", "true").lower() == "true",
             metrics_require_admin=os.getenv("METRICS_REQUIRE_ADMIN", "true").lower() == "true",
+            sse_ticket_ttl_seconds=int(os.getenv("SSE_TICKET_TTL_SECONDS", "30")),
+            sse_queue_capacity=int(os.getenv("SSE_QUEUE_CAPACITY", "100")),
+            sse_heartbeat_seconds=int(os.getenv("SSE_HEARTBEAT_SECONDS", "15")),
         )
 
 
@@ -265,7 +281,7 @@ class Config:
             roles=GameRoleConfig(),
             phase_times=PhaseTimeConfig(),
             memory=MemoryConfig(),
-            rules=GameRulesConfig(),
+            rules=GameRulesConfig.from_env(),
             server=ServerConfig.from_env(env)
         )
 

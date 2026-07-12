@@ -24,7 +24,7 @@ def test_day_last_words_handler():
     assert handler.process_action(action) is True
     
     # Advance
-    assert handler.try_advance() == GamePhase.SHERIFF_ELECTION
+    assert handler.try_advance() == GamePhase.DAY_DISCUSS
 
 def test_sheriff_vote_weight():
     gm = GameManager()

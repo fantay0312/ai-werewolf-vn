@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from app.models.api_models import GameLogView, GameStateView, PlayerView
 from app.models.game_state import GameState
+from app.application.projections.projection_policy import (
+    can_view_log,
+    visible_has_acted,
+    visible_pk_votes,
+    visible_portrait,
+    visible_role,
+    visible_skill_usage,
+    visible_votes,
+)
 
 
 class PublicViewProjector:
@@ -14,15 +23,15 @@ class PublicViewProjector:
                 PlayerView(
                     id=player.id,
                     name=player.name,
-                    role=player.role if not player.is_alive else "unknown",
-                    portrait=player.portrait,
+                    role=visible_role(game, player),
+                    portrait=visible_portrait(game, player),
                     is_human=False,
                     is_alive=player.is_alive,
                     is_sheriff=player.is_sheriff,
-                    has_acted=player.has_acted,
-                    poison_used=player.poison_used,
-                    antidote_used=player.antidote_used,
-                    gun_used=player.gun_used,
+                    has_acted=visible_has_acted(game, player),
+                    poison_used=player.poison_used if visible_skill_usage(game, player) else False,
+                    antidote_used=player.antidote_used if visible_skill_usage(game, player) else False,
+                    gun_used=player.gun_used if visible_skill_usage(game, player) else False,
                 )
                 for player in game.players
             ],
@@ -38,12 +47,12 @@ class PublicViewProjector:
                     data=log.data,
                 )
                 for log in game.game_logs
-                if log.is_public
+                if can_view_log(game, log)
             ],
             time_remaining=game.time_remaining,
             winner=game.winner,
-            votes=game.votes if game.phase.value in {"DAY_VOTE", "DAY_VOTE_RESULT", "SHERIFF_VOTE", "SHERIFF_TRANSFER"} else {},
-            pk_votes=game.pk_votes if game.phase.value in {"DAY_PK_VOTE", "DAY_PK_RESULT"} else {},
+            votes=visible_votes(game),
+            pk_votes=visible_pk_votes(game),
             pk_candidates=game.pk_candidates,
             wolf_kill_target=None,
             dead_players=game.dead_players,

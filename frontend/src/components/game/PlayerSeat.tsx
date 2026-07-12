@@ -1,16 +1,9 @@
-import React from 'react'
+import { memo, type CSSProperties, type MouseEvent } from 'react'
 import { Skull, Crown } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import type { Player, Role } from '../../types'
-import { ROLE_NAMES, isWolfRole } from '../../types'
-
-export type SelectionMode = 'none' | 'vote' | 'kill' | 'check' | 'protect' | 'poison' | 'save' | 'shoot'
-
-export interface PlayerMarker {
-  type: 'wolf' | 'good' | 'suspicious' | 'trusted' | 'custom'
-  label?: string
-  color?: string
-}
+import type { Player, SelectionMode } from '../../types'
+import { isWolfRole } from '../../types'
+import { getPortraitUrl, getRoleName } from '../../lib/roles'
 
 interface PlayerSeatProps {
   player: Player
@@ -21,13 +14,12 @@ interface PlayerSeatProps {
   showRole?: boolean
   canSelect?: boolean
   selectionMode?: SelectionMode
-  markers?: PlayerMarker[]
   onClick?: (player: Player) => void
   onMouseEnter?: (id: number) => void
   onMouseLeave?: () => void
-  onContextMenu?: (player: Player, e: React.MouseEvent) => void
+  onContextMenu?: (player: Player, e: MouseEvent) => void
   className?: string
-  style?: React.CSSProperties
+  style?: CSSProperties
 }
 
 const selectionModeIcons: Record<SelectionMode, string> = {
@@ -38,10 +30,21 @@ const selectionModeIcons: Record<SelectionMode, string> = {
   protect: '🛡️',
   poison: '☠️',
   save: '💚',
-  shoot: '🔫'
+  shoot: '🔫',
 }
 
-export function PlayerSeat({
+const selectedFrameColors: Record<SelectionMode, string> = {
+  none: 'rgba(100, 116, 139, 0.5)',
+  vote: 'rgba(59, 130, 246, 1)',
+  kill: 'rgba(244, 63, 94, 1)',
+  check: 'rgba(217, 70, 239, 1)',
+  protect: 'rgba(6, 182, 212, 1)',
+  poison: 'rgba(225, 29, 72, 1)',
+  save: 'rgba(16, 185, 129, 1)',
+  shoot: 'rgba(249, 115, 22, 1)',
+}
+
+function PlayerSeatComponent({
   player,
   isCurrentSpeaker = false,
   isSelected = false,
@@ -50,7 +53,6 @@ export function PlayerSeat({
   showRole = false,
   canSelect = false,
   selectionMode = 'none',
-  markers = [],
   onClick,
   onMouseEnter,
   onMouseLeave,
@@ -59,49 +61,16 @@ export function PlayerSeat({
   style,
 }: PlayerSeatProps) {
   const isDead = !player.is_alive
-  const roleName = ROLE_NAMES[player.role as Role] || player.role
+  const roleName = getRoleName(player.role)
+  const portraitUrl = showRole ? getPortraitUrl(player.role) : null
 
   const cssFrameColor = (() => {
     if (isDead) return 'rgba(159, 18, 57, 0.8)' // rose-900 border
     if (player.is_sheriff) return 'rgba(252, 211, 77, 0.9)' // amber-300
     if (isMe) return 'rgba(56, 189, 248, 1)' // sky-400
-    if (isSelected) {
-      const colors: Record<SelectionMode, string> = {
-        none: 'rgba(100, 116, 139, 0.5)',
-        vote: 'rgba(59, 130, 246, 1)',
-        kill: 'rgba(244, 63, 94, 1)',
-        check: 'rgba(217, 70, 239, 1)',
-        protect: 'rgba(6, 182, 212, 1)',
-        poison: 'rgba(225, 29, 72, 1)',
-        save: 'rgba(16, 185, 129, 1)',
-        shoot: 'rgba(249, 115, 22, 1)'
-      }
-      return colors[selectionMode]
-    }
+    if (isSelected) return selectedFrameColors[selectionMode]
     return 'rgba(255, 255, 255, 0.15)' // default glass border
   })()
-
-  const getMarkerClass = (marker: PlayerMarker) => {
-    const classes: Record<string, string> = {
-      wolf: 'marker-wolf',
-      good: 'marker-good',
-      suspicious: 'marker-suspicious',
-      trusted: 'marker-trusted',
-      custom: 'marker-custom'
-    }
-    return classes[marker.type] || 'marker-custom'
-  }
-
-  const getMarkerIcon = (marker: PlayerMarker) => {
-    const icons: Record<string, string> = {
-      wolf: '🐺',
-      good: '😇',
-      suspicious: '❓',
-      trusted: '✓',
-      custom: '📌'
-    }
-    return icons[marker.type] || '📌'
-  }
 
   return (
     <div
@@ -136,7 +105,7 @@ export function PlayerSeat({
       )}
 
       {/* 主体座位徽章 */}
-      <div 
+      <div
         className={cn(
           "player-seat relative w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300",
           isDead ? 'dead' : '',
@@ -151,18 +120,32 @@ export function PlayerSeat({
         <div className="absolute inset-0 rounded-full bg-slate-900/40 backdrop-blur-md border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] group-hover:bg-slate-800/60 transition-colors duration-300 z-0"></div>
 
         {/* 发光戒指特效 */}
-        <div 
-          className="glowing-ring absolute inset-0 rounded-full z-0 transition-all duration-300" 
-          style={{ '--ring-color': cssFrameColor } as React.CSSProperties}
+        <div
+          className="glowing-ring absolute inset-0 rounded-full z-0 transition-all duration-300"
+          style={{ '--ring-color': cssFrameColor } as CSSProperties}
         ></div>
 
-        {/* 玩家编号 */}
-        <div className={cn(
-          "seat-number relative z-10 text-xl font-bold font-mono tracking-tighter text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]",
-          isDead ? "opacity-0" : "opacity-100"
-        )}>
-          {player.id}
-        </div>
+        {/* Portrait or Number */}
+        {portraitUrl && !isDead ? (
+          <img
+            src={portraitUrl}
+            alt={roleName}
+            className="absolute inset-0 w-full h-full object-cover rounded-full z-[1]"
+          />
+        ) : (
+          <div className={cn(
+            "seat-number relative z-10 text-xl font-bold font-mono tracking-tighter text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]",
+            isDead ? "opacity-0" : "opacity-100"
+          )}>
+            {player.id}
+          </div>
+        )}
+        {/* Player ID overlay on portrait */}
+        {portraitUrl && !isDead && (
+          <div className="absolute bottom-0 right-0 z-10 w-5 h-5 rounded-full bg-black/70 flex items-center justify-center text-[10px] font-bold text-white border border-white/30">
+            {player.id}
+          </div>
+        )}
 
         {/* 死亡标记 */}
         {isDead && (
@@ -209,21 +192,10 @@ export function PlayerSeat({
           <span className="me-tag block text-[10px] text-sky-400 font-bold mt-0.5 tracking-wide uppercase">(You)</span>
         )}
       </div>
-
-      {/* 标记系统 */}
-      {markers.length > 0 && (
-        <div className="markers-container">
-          {markers.map(marker => (
-            <div
-              key={marker.type}
-              className={cn("player-marker", getMarkerClass(marker))}
-              title={marker.label || marker.type}
-            >
-              {getMarkerIcon(marker)}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
+
+// Memoized so a hover (local GameTable state) or a poll refresh only re-renders
+// the seats whose props actually changed, not all 12.
+export const PlayerSeat = memo(PlayerSeatComponent)

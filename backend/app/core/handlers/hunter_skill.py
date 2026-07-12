@@ -44,15 +44,15 @@ class HunterSkillHandler(PhaseHandler):
             target = self.find_alive_player(action.target_id)
             if not target:
                 return False
-            target.is_alive = False
             target_death_cause = (
                 DeathCause.HUNTER_SHOOT if player.role == Role.HUNTER else DeathCause.WOLF_KING_SHOOT
             )
-            target.death_cause = target_death_cause
+            self.record_death(target, target_death_cause)
             if target.id not in self.game.dead_players:
                 self.game.dead_players.append(target.id)
             player.gun_used = True
             player.has_acted = True
+            self.evaluate_win_condition()
             self.add_log(
                 f"枪声响起，{target.id}号玩家出局。",
                 log_type="action",
@@ -103,6 +103,7 @@ class HunterSkillHandler(PhaseHandler):
     def try_advance(self) -> GamePhase:
         shooter = self._find_shooter()
         if shooter:
+            self.game.winner = None
             return None
 
         # Check for Sheriff Transfer
@@ -110,6 +111,7 @@ class HunterSkillHandler(PhaseHandler):
             (p for p in self.game.players if not p.is_alive and p.is_sheriff), None
         )
         if dead_sheriff:
+            self.game.winner = None
             self.add_log(
                 "死亡技能结算后进入警徽移交。",
                 is_public=False,
@@ -121,6 +123,9 @@ class HunterSkillHandler(PhaseHandler):
                 ),
             )
             return GamePhase.SHERIFF_TRANSFER
+
+        if self.evaluate_win_condition():
+            return GamePhase.GAME_END
 
         if hasattr(self.game, 'next_phase_after_skill') and self.game.next_phase_after_skill:
             self.add_log(

@@ -84,11 +84,14 @@ class SheriffTransferHandler(PhaseHandler):
         sheriff = next((p for p in self.game.players if p.is_sheriff), None)
 
         if sheriff and sheriff.is_alive:
-            return self._get_next_phase()
-        if not sheriff:
-            return self._get_next_phase()
-        if not sheriff.has_acted:
+            return self._next_phase_after_win_check()
+        if sheriff and not sheriff.has_acted:
             return None
+        return self._next_phase_after_win_check()
+
+    def _next_phase_after_win_check(self) -> GamePhase:
+        if self.evaluate_win_condition():
+            return GamePhase.GAME_END
         return self._get_next_phase()
 
     def _get_next_phase(self):

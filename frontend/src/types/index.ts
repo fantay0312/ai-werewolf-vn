@@ -47,13 +47,6 @@ export type SelectionMode =
   | 'save'
   | 'shoot'
 
-// 玩家标记类型
-export interface PlayerMarker {
-  type: 'wolf' | 'good' | 'suspicious' | 'trusted' | 'custom'
-  label?: string
-  color?: string
-}
-
 // 投票记录类型
 export interface VoteRecord {
   voterId: number
@@ -88,8 +81,21 @@ export interface Player {
   poison_used?: boolean
   antidote_used?: boolean
   gun_used?: boolean
-  markers?: PlayerMarker[]
 }
+
+// Known log kinds (for reference). Backend GameLogView.type is an open `str`,
+// so the field is widened to `string` to avoid runtime type violations when the
+// backend introduces a new kind.
+export type GameLogType =
+  | 'normal'
+  | 'broadcast'
+  | 'speech'
+  | 'action'
+  | 'death'
+  | 'vote'
+  | 'skill'
+  | 'system'
+  | 'judge'
 
 export interface GameLog {
   id: string
@@ -98,8 +104,8 @@ export interface GameLog {
   content: string
   player_id?: number
   is_public: boolean
-  type: 'normal' | 'broadcast' | 'speech' | 'action'
-  data?: Record<string, any>
+  type: string
+  data?: Record<string, unknown>
 }
 
 export interface WolfDiscussMessage {
@@ -109,6 +115,8 @@ export interface WolfDiscussMessage {
   round: number
 }
 
+export type Winner = 'good' | 'wolf'
+
 export interface GameState {
   session_id: string
   day: number
@@ -116,7 +124,7 @@ export interface GameState {
   players: Player[]
   game_logs: GameLog[]
   time_remaining: number
-  winner: string | null
+  winner: Winner | null
   votes: Record<number, number>
   pk_votes?: Record<number, number>
   pk_candidates?: number[]
@@ -132,20 +140,32 @@ export interface GameState {
   wolf_discuss_messages?: WolfDiscussMessage[]
 }
 
-export type GameStateView = GameState
-
 export interface CreateGameResponse {
   player_token: string
-  state: GameStateView
+  state: GameState
 }
 
 export interface ActionRequest {
+  // Backend overrides player_id from the authenticated token; sent for clarity only.
   player_id: number
   type: ActionType
   target_id?: number
   content?: string
-  timestamp?: number
 }
+
+// Backend player-action endpoint returns ActionResponse{success, message}.
+export interface ActionResponse {
+  success: boolean
+  message?: string
+}
+
+// Realtime connection health, surfaced to the UI (see api/realtime.ts).
+export type ConnectionStatus =
+  | 'connecting'
+  | 'live'
+  | 'polling'
+  | 'reconnecting'
+  | 'offline'
 
 // Role display info
 export const ROLE_NAMES: Record<Role, string> = {

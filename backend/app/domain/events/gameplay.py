@@ -26,9 +26,22 @@ def player_action_received(
     target_id: int | None,
     source: str,
 ) -> DomainEvent:
-    visibility = VisibilityScope.PUBLIC
-    if action_type in {ActionType.KILL, ActionType.CHECK, ActionType.GUARD, ActionType.SAVE, ActionType.POISON}:
-        visibility = VisibilityScope.PRIVATE
+    covert_vote_phases = {
+        GamePhase.DAY_VOTE,
+        GamePhase.DAY_PK_VOTE,
+        GamePhase.SHERIFF_VOTE,
+    }
+    is_covert = (
+        game.phase.value.startswith("NIGHT_")
+        or (action_type == ActionType.VOTE and game.phase in covert_vote_phases)
+    )
+    visibility = VisibilityScope.PRIVATE if is_covert else VisibilityScope.PUBLIC
+    payload = {
+        "action_type": action_type.value,
+        "source": source,
+    }
+    if is_covert:
+        payload["viewer_ids"] = [actor_id]
 
     return DomainEvent(
         name="player_action_received",
@@ -38,10 +51,7 @@ def player_action_received(
         actor_id=actor_id,
         target_id=target_id,
         visibility=visibility,
-        payload={
-            "action_type": action_type.value,
-            "source": source,
-        },
+        payload=payload,
     )
 
 

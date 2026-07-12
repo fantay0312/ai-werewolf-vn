@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface TypeWriterProps {
   text: string
@@ -7,24 +7,29 @@ interface TypeWriterProps {
   highlight?: boolean
 }
 
+// Compiled once at module scope (previously rebuilt on every character tick,
+// re-parsing/re-compiling several RegExps per part per render).
+const ROLE_KEYWORDS = '狼人|预言家|女巫|守卫|猎人|狼王|村民|好人|神职'
+const ACTION_KEYWORDS = '击杀|毒杀|查验|守护|投票|放逐|自爆|开枪'
+const PLAYER_KEYWORD = '\\d+号'
+
+const SPLIT_PATTERN = new RegExp(`(${ROLE_KEYWORDS}|${ACTION_KEYWORDS}|${PLAYER_KEYWORD})`, 'g')
+const PLAYER_RE = new RegExp(`^(?:${PLAYER_KEYWORD})$`)
+const ROLE_RE = new RegExp(`^(?:${ROLE_KEYWORDS})$`)
+const ACTION_RE = new RegExp(`^(?:${ACTION_KEYWORDS})$`)
+
 // React version of highlightKeywords that returns React nodes
 function highlightText(fullText: string) {
-  // Regex to split by keywords and keep them
-  const roles = '狼人|预言家|女巫|守卫|猎人|狼王|村民|好人|神职'
-  const actions = '击杀|毒杀|查验|守护|投票|放逐|自爆|开枪'
-  const players = '\\d+号'
-  
-  const pattern = new RegExp(`(${roles}|${actions}|${players})`, 'g')
-  const parts = fullText.split(pattern)
-  
+  const parts = fullText.split(SPLIT_PATTERN)
+
   return parts.map((part, i) => {
-    if (new RegExp(`^${players}$`).test(part)) {
+    if (PLAYER_RE.test(part)) {
       return <span key={i} className="highlight-player text-sky-400 font-semibold">{part}</span>
     }
-    if (new RegExp(`^${roles}$`).test(part)) {
+    if (ROLE_RE.test(part)) {
       return <span key={i} className="highlight-role text-purple-400 font-semibold">{part}</span>
     }
-    if (new RegExp(`^${actions}$`).test(part)) {
+    if (ACTION_RE.test(part)) {
       return <span key={i} className="highlight-action text-rose-400 font-semibold">{part}</span>
     }
     return part
@@ -34,6 +39,11 @@ function highlightText(fullText: string) {
 export function TypeWriter({ text, speed = 30, onFinished, highlight = true }: TypeWriterProps) {
   const [displayedLength, setDisplayedLength] = useState(0)
   const [isTyping, setIsTyping] = useState(false)
+  const onFinishedRef = useRef(onFinished)
+
+  useEffect(() => {
+    onFinishedRef.current = onFinished
+  }, [onFinished])
 
   useEffect(() => {
     setDisplayedLength(0)
@@ -41,7 +51,7 @@ export function TypeWriter({ text, speed = 30, onFinished, highlight = true }: T
 
     if (!text) {
       setIsTyping(false)
-      onFinished?.()
+      onFinishedRef.current?.()
       return
     }
 
@@ -55,14 +65,14 @@ export function TypeWriter({ text, speed = 30, onFinished, highlight = true }: T
         timeoutId = setTimeout(typeNext, speed)
       } else {
         setIsTyping(false)
-        onFinished?.()
+        onFinishedRef.current?.()
       }
     }
 
     timeoutId = setTimeout(typeNext, speed)
 
     return () => clearTimeout(timeoutId)
-  }, [text, speed]) // intentionally matching Vue logic which restarts on prop change
+  }, [text, speed])
 
   const displayedText = text.substring(0, displayedLength)
 

@@ -45,12 +45,14 @@ class MemoryManager:
         
     def save_to_player(self, player: Player):
         """Persist current memory state to player object"""
-        player.ai_memory = {
+        memory_payload = dict(player.ai_memory or {})
+        memory_payload.update({
             "metadata_layer": self.metadata_layer.model_dump() if self.metadata_layer else None,
             "summary_layer": self.summary_layer.model_dump() if hasattr(self.summary_layer, 'model_dump') else self.summary_layer.dict(),
             "recent_layer": self.recent_layer.model_dump() if hasattr(self.recent_layer, 'model_dump') else self.recent_layer.dict(),
             "last_log_index": self.last_log_index
-        }
+        })
+        player.ai_memory = memory_payload
 
     def update_facts(self, game_state: GameState):
         """Re-generate FactLayer from GameState every time"""
@@ -91,9 +93,9 @@ class MemoryManager:
             if not player.is_alive:
                 dead_records.append(DeathRecord(
                     player_id=player.id,
-                    day=game_state.day,
-                    phase=game_state.phase,
-                    cause="unknown"
+                    day=player.death_day if player.death_day is not None else game_state.day,
+                    phase=player.death_phase or game_state.phase,
+                    cause=player.death_cause.value if player.death_cause else "unknown"
                 ))
              
         # Skill Status

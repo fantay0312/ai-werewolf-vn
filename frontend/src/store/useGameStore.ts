@@ -1,6 +1,16 @@
 import { create } from 'zustand'
-import { gameApi, GameStatePoller } from '../api'
-import type { ActionType, GameState, WolfDiscussMessage } from '../types'
+import { gameApi, parseApiError } from '../api'
+import { RealtimeConnection } from '../api/realtime'
+import type {
+  ActionType,
+  ConnectionStatus,
+  GameLog,
+  GamePhase,
+  GameState,
+  Player,
+  Winner,
+  WolfDiscussMessage,
+} from '../types'
 
 const DEFAULT_LOADING_TEXT = '加载中...'
 const ERROR_DISPLAY_MS = 3000
@@ -44,28 +54,106 @@ interface GameStoreState {
   sessionId: string | null
   playerToken: string | null
   loadingCount: number
+  isLoading: boolean
   loadingText: string
   loadingStartTime: number
   error: string | null
+  connectionStatus: ConnectionStatus
   currentActionType: string
+  myPlayer: Player | null
+  currentPhase: GamePhase | ''
+  currentDay: number
+  gameLogs: GameLog[]
+  wolfDiscussMessages: WolfDiscussMessage[]
+  winner: Winner | null
+  sheriffId: number | null
+  sheriffCandidates: number[]
+  isCandidate: boolean
 
   // Actions
   setError: (message: string | null) => void
+  setLoading: (loading: boolean, text?: string) => void
   startLoading: (text?: string) => void
   stopLoading: () => void
   cancelLoading: () => void
   createGame: () => Promise<void>
   fetchGameState: () => Promise<void>
   submitAction: (type: ActionType | string, targetId?: number | null, content?: string) => Promise<void>
-  startPolling: () => void
-  stopPolling: () => void
+  connectRealtime: () => void
+  disconnectRealtime: () => void
   recoverSession: () => void
   clearSession: () => void
 }
 
-const poller = new GameStatePoller()
+const realtime = new RealtimeConnection()
 let errorTimeout: ReturnType<typeof setTimeout> | null = null
 let loadingTimeout: ReturnType<typeof setTimeout> | null = null
+
+export function getStoredSessionId(): string | null {
+  if (typeof window === 'undefined') return null
+  return window.localStorage.getItem(SESSION_STORAGE_KEY)
+}
+
+export function getStoredPlayerToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return window.localStorage.getItem(PLAYER_TOKEN_STORAGE_KEY)
+}
+
+export function hasStoredSession(): boolean {
+  return Boolean(getStoredSessionId())
+}
+
+function persistSession(sessionId: string, playerToken: string | null) {
+  if (typeof window === 'undefined') return
+
+  window.localStorage.setItem(SESSION_STORAGE_KEY, sessionId)
+  if (playerToken) {
+    window.localStorage.setItem(PLAYER_TOKEN_STORAGE_KEY, playerToken)
+  } else {
+    window.localStorage.removeItem(PLAYER_TOKEN_STORAGE_KEY)
+  }
+}
+
+function clearPersistedSession() {
+  if (typeof window === 'undefined') return
+
+  window.localStorage.removeItem(SESSION_STORAGE_KEY)
+  window.localStorage.removeItem(PLAYER_TOKEN_STORAGE_KEY)
+}
+
+function deriveState(
+  gameState: GameState | null,
+  loadingCount: number
+): Pick<
+  GameStoreState,
+  | 'isLoading'
+  | 'myPlayer'
+  | 'currentPhase'
+  | 'currentDay'
+  | 'gameLogs'
+  | 'wolfDiscussMessages'
+  | 'winner'
+  | 'sheriffId'
+  | 'sheriffCandidates'
+  | 'isCandidate'
+> {
+  const players = gameState?.players || []
+  const myPlayer = players.find((player) => player.is_human) || null
+  const sheriffCandidates = gameState?.sheriff_candidate_ids || []
+
+  return {
+    isLoading: loadingCount > 0,
+    myPlayer,
+    currentPhase: gameState?.phase || '',
+    currentDay: gameState?.day || 1,
+    gameLogs: gameState?.game_logs || [],
+    wolfDiscussMessages: gameState?.wolf_discuss_messages || [],
+    winner: gameState?.winner || null,
+    sheriffId: gameState?.sheriff_id || null,
+    sheriffCandidates,
+    isCandidate: myPlayer ? sheriffCandidates.includes(myPlayer.id) : false,
+  }
+}
 
 export const useGameStore = create<GameStoreState>((set, get) => {
   const watchLoading = (isLoading: boolean, actionType: string) => {
@@ -88,15 +176,40 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     }
   }
 
+  // Shared failure handling: game gone / auth lost -> drop the session so the
+  // UI can route the player back home instead of looping forever.
+  const handleFatal = (message: string) => {
+    clearPersistedSession()
+    set({
+      gameState: null,
+      sessionId: null,
+      playerToken: null,
+      connectionStatus: 'offline',
+      ...deriveState(null, get().loadingCount),
+    })
+    get().setError(message)
+  }
+
   return {
     gameState: null,
     sessionId: null,
     playerToken: null,
     loadingCount: 0,
+    isLoading: false,
     loadingText: DEFAULT_LOADING_TEXT,
     loadingStartTime: 0,
     error: null,
+    connectionStatus: 'offline',
     currentActionType: '',
+    myPlayer: null,
+    currentPhase: '',
+    currentDay: 1,
+    gameLogs: [],
+    wolfDiscussMessages: [],
+    winner: null,
+    sheriffId: null,
+    sheriffCandidates: [],
+    isCandidate: false,
 
     setError: (message) => {
       if (errorTimeout) {
@@ -109,6 +222,14 @@ export const useGameStore = create<GameStoreState>((set, get) => {
       }
     },
 
+    setLoading: (loading, text = DEFAULT_LOADING_TEXT) => {
+      if (loading) {
+        get().startLoading(text)
+      } else {
+        get().cancelLoading()
+      }
+    },
+
     startLoading: (text = DEFAULT_LOADING_TEXT) => {
       set((state) => {
         const newCount = state.loadingCount + 1
@@ -117,6 +238,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
         }
         return {
           loadingCount: newCount,
+          isLoading: true,
           loadingText: text,
           loadingStartTime: Date.now(),
         }
@@ -130,17 +252,19 @@ export const useGameStore = create<GameStoreState>((set, get) => {
           watchLoading(false, '')
           return {
             loadingCount: 0,
+            isLoading: false,
             loadingText: DEFAULT_LOADING_TEXT,
             loadingStartTime: 0,
           }
         }
-        return { loadingCount: newCount }
+        return { loadingCount: newCount, isLoading: true }
       })
     },
 
     cancelLoading: () => {
       set({
         loadingCount: 0,
+        isLoading: false,
         loadingText: DEFAULT_LOADING_TEXT,
         loadingStartTime: 0,
       })
@@ -148,7 +272,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     },
 
     createGame: async () => {
-      const { startLoading, stopLoading, setError, startPolling } = get()
+      const { startLoading, stopLoading, setError } = get()
       startLoading('正在创建游戏...')
       setError(null)
       try {
@@ -156,17 +280,14 @@ export const useGameStore = create<GameStoreState>((set, get) => {
         set({
           gameState: response.state,
           sessionId: response.state.session_id,
-          playerToken: response.player_token || null
+          playerToken: response.player_token || null,
+          ...deriveState(response.state, get().loadingCount),
         })
-        localStorage.setItem(SESSION_STORAGE_KEY, response.state.session_id)
-        if (response.player_token) {
-          localStorage.setItem(PLAYER_TOKEN_STORAGE_KEY, response.player_token)
-        } else {
-          localStorage.removeItem(PLAYER_TOKEN_STORAGE_KEY)
-        }
-        startPolling()
-      } catch (err: any) {
-        setError(err.response?.data?.detail || '创建游戏失败')
+        persistSession(response.state.session_id, response.player_token || null)
+        // Realtime is connected by GameRoom on mount (single owner of the
+        // connection lifecycle), so we don't start it here.
+      } catch (err: unknown) {
+        setError(parseApiError(err, '创建游戏失败').message)
         throw err
       } finally {
         stopLoading()
@@ -176,7 +297,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     fetchGameState: async () => {
       let { sessionId, playerToken } = get()
       if (!sessionId) {
-        const storedSessionId = localStorage.getItem(SESSION_STORAGE_KEY)
+        const storedSessionId = getStoredSessionId()
         if (storedSessionId) {
           sessionId = storedSessionId
           set({ sessionId })
@@ -187,29 +308,30 @@ export const useGameStore = create<GameStoreState>((set, get) => {
 
       try {
         if (!playerToken) {
-          playerToken = localStorage.getItem(PLAYER_TOKEN_STORAGE_KEY)
+          playerToken = getStoredPlayerToken()
           set({ playerToken })
         }
 
         const state = await gameApi.getGameState(sessionId, playerToken)
-        set({ gameState: state })
-      } catch (err: any) {
-        if (err.response?.status === 404) {
-          get().setError('游戏不存在')
-          localStorage.removeItem(SESSION_STORAGE_KEY)
-          localStorage.removeItem(PLAYER_TOKEN_STORAGE_KEY)
-          set({ sessionId: null, playerToken: null })
+        set({
+          gameState: state,
+          ...deriveState(state, get().loadingCount),
+        })
+      } catch (err: unknown) {
+        const { status, message } = parseApiError(err, '获取游戏状态失败')
+        if (status === 404 || status === 403) {
+          realtime.stop()
+          handleFatal(status === 404 ? '游戏不存在' : '登录已失效，请重新开始游戏')
         } else {
-          get().setError(err.response?.data?.detail || '获取游戏状态失败')
+          get().setError(message)
         }
         console.error('Failed to fetch game state:', err)
       }
     },
 
     submitAction: async (type, targetId, content) => {
-      const { sessionId, playerToken, setError, startLoading, stopLoading, fetchGameState, gameState } = get()
-      const myPlayer = gameState?.players.find(p => p.is_human)
-      
+      const { sessionId, playerToken, myPlayer, setError, startLoading, stopLoading, fetchGameState } = get()
+
       if (!sessionId || !myPlayer) {
         setError('无效的游戏状态或玩家')
         return
@@ -220,17 +342,19 @@ export const useGameStore = create<GameStoreState>((set, get) => {
       startLoading(text)
       setError(null)
       try {
-        const token = playerToken || localStorage.getItem(PLAYER_TOKEN_STORAGE_KEY)
-        await gameApi.submitAction(sessionId, {
+        const token = playerToken || getStoredPlayerToken()
+        const result = await gameApi.submitAction(sessionId, {
           player_id: myPlayer.id,
           type: type as ActionType,
           target_id: targetId ?? undefined,
           content,
-          timestamp: Date.now() / 1000
         }, token)
+        if (result && result.success === false) {
+          setError(result.message || '操作未被接受')
+        }
         await fetchGameState()
-      } catch (err: any) {
-        setError(err.response?.data?.detail || '提交操作失败')
+      } catch (err: unknown) {
+        setError(parseApiError(err, '提交操作失败').message)
         throw err
       } finally {
         stopLoading()
@@ -238,67 +362,49 @@ export const useGameStore = create<GameStoreState>((set, get) => {
       }
     },
 
-    startPolling: () => {
+    connectRealtime: () => {
       const { sessionId, playerToken } = get()
       if (!sessionId) return
-      poller.start(
-        sessionId,
-        playerToken,
-        (state) => {
-          set({ gameState: state })
+      realtime.start(sessionId, playerToken, {
+        onUpdate: (state) => {
+          set({
+            gameState: state,
+            ...deriveState(state, get().loadingCount),
+          })
         },
-        (err) => {
-          console.error('Polling error:', err)
-        },
-        2000
-      )
+        onStatus: (status) => set({ connectionStatus: status }),
+        onFatal: (message) => handleFatal(message),
+      })
     },
 
-    stopPolling: () => {
-      poller.stop()
+    disconnectRealtime: () => {
+      realtime.stop()
+      set({ connectionStatus: 'offline' })
     },
 
+    // Restore session identity from storage. The realtime manager hydrates once
+    // when connected (owned by GameRoom), so we do not fetch/connect here — this
+    // avoids the previous double initial request.
     recoverSession: () => {
-      const storedSessionId = localStorage.getItem(SESSION_STORAGE_KEY)
-      if (storedSessionId) {
-        set({
-          sessionId: storedSessionId,
-          playerToken: localStorage.getItem(PLAYER_TOKEN_STORAGE_KEY)
-        })
-        get().fetchGameState()
-        get().startPolling()
-      }
+      const storedSessionId = getStoredSessionId()
+      if (!storedSessionId) return
+      set({
+        sessionId: storedSessionId,
+        playerToken: getStoredPlayerToken(),
+      })
     },
 
     clearSession: () => {
-      get().stopPolling()
+      get().disconnectRealtime()
       set({
         gameState: null,
         sessionId: null,
         playerToken: null,
         error: null,
+        connectionStatus: 'offline',
+        ...deriveState(null, 0),
       })
-      localStorage.removeItem(SESSION_STORAGE_KEY)
-      localStorage.removeItem(PLAYER_TOKEN_STORAGE_KEY)
+      clearPersistedSession()
     }
   }
 })
-
-// Selectors for computed properties
-export const useIsLoading = () => useGameStore(state => state.loadingCount > 0)
-export const usePlayers = () => useGameStore(state => state.gameState?.players || [])
-export const useMyPlayer = () => useGameStore(state => state.gameState?.players.find(p => p.is_human))
-export const useCurrentPhase = () => useGameStore(state => state.gameState?.phase || '')
-export const useCurrentDay = () => useGameStore(state => state.gameState?.day || 1)
-export const useGameLogs = () => useGameStore(state => state.gameState?.game_logs || [])
-export const usePublicLogs = () => useGameStore(state => (state.gameState?.game_logs || []).filter(log => log.is_public))
-export const useWolfDiscussMessages = () => useGameStore(state => state.gameState?.wolf_discuss_messages || [])
-export const useWinner = () => useGameStore(state => state.gameState?.winner)
-export const useIsGameOver = () => useGameStore(state => !!state.gameState?.phase && state.gameState.phase === 'GAME_END')
-export const useSheriffId = () => useGameStore(state => state.gameState?.sheriff_id)
-export const useSheriffCandidates = () => useGameStore(state => state.gameState?.sheriff_candidate_ids || [])
-export const useIsCandidate = () => {
-  const myPlayer = useMyPlayer()
-  const candidates = useSheriffCandidates()
-  return myPlayer ? candidates.includes(myPlayer.id) : false
-}

@@ -30,12 +30,13 @@ def _find_event_log(game: GameState, event_name: str):
 def test_sheriff_transfer_logs_started_and_transfer_metadata():
     dead_sheriff = _player(1, Role.VILLAGER, alive=False, sheriff=True)
     receiver = _player(2, Role.SEER)
-    other = _player(3, Role.VILLAGER)
+    other = _player(3, Role.WOLF)
+    villager = _player(4, Role.VILLAGER)
     game = GameState(
         session_id="sheriff-transfer",
         day=2,
         phase=GamePhase.SHERIFF_TRANSFER,
-        players=[dead_sheriff, receiver, other],
+        players=[dead_sheriff, receiver, other, villager],
         sheriff_id=1,
         next_phase_after_skill=GamePhase.DAY_START,
     )
@@ -47,7 +48,7 @@ def test_sheriff_transfer_logs_started_and_transfer_metadata():
     assert start_log.player_id == 1
     assert start_log.type == "action"
     assert start_log.data["sheriff_id"] == 1
-    assert start_log.data["eligible_recipient_ids"] == [2, 3]
+    assert start_log.data["eligible_recipient_ids"] == [2, 3, 4]
     assert start_log.data["next_phase"] == GamePhase.DAY_START.value
 
     assert handler.process_action(ActionRequest(player_id=1, type=ActionType.VOTE, target_id=2)) is True
@@ -66,11 +67,13 @@ def test_sheriff_transfer_logs_started_and_transfer_metadata():
 def test_sheriff_transfer_logs_badge_tear_metadata():
     dead_sheriff = _player(4, Role.VILLAGER, alive=False, sheriff=True)
     other = _player(5, Role.WITCH)
+    wolf = _player(6, Role.WOLF)
+    villager = _player(7, Role.VILLAGER)
     game = GameState(
         session_id="sheriff-tear",
         day=3,
         phase=GamePhase.SHERIFF_TRANSFER,
-        players=[dead_sheriff, other],
+        players=[dead_sheriff, other, wolf, villager],
         sheriff_id=4,
     )
 

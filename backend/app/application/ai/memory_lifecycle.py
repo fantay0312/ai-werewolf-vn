@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Mapping, MutableMapping, Optional
+from typing import Any, Dict, Mapping, Optional
 
 from app.models.game_state import GamePhase, GameState, Player
 
@@ -68,7 +68,7 @@ class MemoryLifecycleManager:
             notes=tuple(notes),
         )
 
-    def apply_legacy_rollover(
+    def apply_rollover(
         self,
         memory_payload: Optional[Mapping[str, Any]],
         plan: MemoryRolloverPlan,
@@ -88,21 +88,5 @@ class MemoryLifecycleManager:
         payload["recent_layer"] = recent_layer
         meta = dict(payload.get(self.META_KEY) or {})
         meta.update(plan.metadata_updates)
-        payload[self.META_KEY] = meta
-        return payload
-
-    def stamp_runtime_meta(
-        self,
-        memory_payload: Optional[MutableMapping[str, Any]],
-        game_state: GameState,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = dict(memory_payload or {})
-        meta = dict(payload.get(self.META_KEY) or {})
-        meta.update(
-            {
-                "last_seen_day": game_state.day,
-                "last_seen_phase": game_state.phase.value,
-            }
-        )
         payload[self.META_KEY] = meta
         return payload

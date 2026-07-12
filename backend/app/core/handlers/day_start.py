@@ -67,15 +67,14 @@ class DayStartHandler(PhaseHandler):
         if self.game.winner:
             return GamePhase.GAME_END
 
-        if self.game.day == 1 and self.game.dead_players:
+        if self._has_first_dawn_last_words():
             return GamePhase.DAY_LAST_WORDS
 
         if self.game.election_cancelled:
             return GamePhase.DAY_DISCUSS
 
-        if self.game.day == 1 or self.game.pending_sheriff_election:
-            if self.game.pending_sheriff_election:
-                self.game.pending_sheriff_election = False
+        if self.game.pending_sheriff_election:
+            self.game.pending_sheriff_election = False
             return GamePhase.SHERIFF_ELECTION
 
         return GamePhase.DAY_DISCUSS
@@ -83,10 +82,13 @@ class DayStartHandler(PhaseHandler):
     def _next_phase_hint(self) -> str:
         if self.game.winner:
             return GamePhase.GAME_END.value
-        if self.game.day == 1 and self.game.dead_players:
+        if self._has_first_dawn_last_words():
             return GamePhase.DAY_LAST_WORDS.value
         if self.game.election_cancelled:
             return GamePhase.DAY_DISCUSS.value
-        if self.game.day == 1 or self.game.pending_sheriff_election:
+        if self.game.pending_sheriff_election:
             return GamePhase.SHERIFF_ELECTION.value
         return GamePhase.DAY_DISCUSS.value
+
+    def _has_first_dawn_last_words(self) -> bool:
+        return self.game.last_resolved_night == 1 and bool(self.game.dead_players)

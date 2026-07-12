@@ -6,11 +6,12 @@ import traceback
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 
 from app.config import Environment, get_config
 from app.core.game_manager import game_manager
@@ -35,6 +36,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 REQUEST_ID_HEADER = "X-Request-ID"
 APP_VERSION = os.getenv("APP_VERSION", "1.0.0")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+FRONTEND_DIST_DIR = REPO_ROOT / "frontend" / "dist"
+FRONTEND_INDEX_FILE = FRONTEND_DIST_DIR / "index.html"
+RESERVED_FRONTEND_PREFIXES = ("api", "health", "ready", "metrics", "docs", "redoc", "openapi.json")
 rate_limiter = RateLimiter()
 
 
@@ -47,6 +52,11 @@ async def lifespan(app: FastAPI):
     restored_games = game_manager.restore_persisted_games()
     game_manager.run_maintenance()
     logger.info("Restored %s persisted games", restored_games)
+    for session_id in list(game_manager.games):
+        asyncio.create_task(
+            game_manager.trigger_ai_actions(session_id),
+            name=f"resume-game-ai-{session_id}",
+        )
     maintenance_task = asyncio.create_task(_maintenance_loop(), name="game-runtime-maintenance")
     app.state.maintenance_task = maintenance_task
     yield
@@ -183,8 +193,12 @@ app.include_router(sse.router, prefix="/api/sse", tags=["sse"])
 app.include_router(config.router, prefix="/api/config", tags=["config"])
 
 
-@app.get("/")
-async def root():
+@app.get("/", include_in_schema=False)
+async def root(request: Request):
+    frontend_response = _serve_frontend_index_if_available(request)
+    if frontend_response is not None:
+        return frontend_response
+
     return {
         "message": "AI Werewolf VN Backend is running",
         "version": getattr(app.state, "version", APP_VERSION),
@@ -251,6 +265,24 @@ async def metrics_endpoint(
     )
 
 
+@app.get("/{full_path:path}", include_in_schema=False)
+async def frontend_routes(full_path: str, request: Request):
+    if not full_path:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    if _is_reserved_backend_path(full_path):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    file_response = _serve_frontend_file(full_path)
+    if file_response is not None:
+        return file_response
+
+    if _request_prefers_html(request) and FRONTEND_INDEX_FILE.exists():
+        return FileResponse(FRONTEND_INDEX_FILE)
+
+    raise HTTPException(status_code=404, detail="Not Found")
+
+
 def _resolve_request_id(request: Request) -> str:
     inbound = request.headers.get(REQUEST_ID_HEADER)
     if inbound:
@@ -258,6 +290,38 @@ def _resolve_request_id(request: Request) -> str:
         if 8 <= len(candidate) <= 128:
             return candidate
     return str(uuid.uuid4())
+
+
+def _request_prefers_html(request: Request) -> bool:
+    accept_header = request.headers.get("accept", "")
+    accepted_types = [item.strip() for item in accept_header.split(",") if item.strip()]
+    return any(item.startswith("text/html") for item in accepted_types)
+
+
+def _serve_frontend_index_if_available(request: Request) -> FileResponse | None:
+    if not FRONTEND_INDEX_FILE.exists():
+        return None
+    if not _request_prefers_html(request):
+        return None
+    return FileResponse(FRONTEND_INDEX_FILE)
+
+
+def _is_reserved_backend_path(path: str) -> bool:
+    root_segment = path.split("/", 1)[0]
+    return root_segment in RESERVED_FRONTEND_PREFIXES
+
+
+def _serve_frontend_file(path: str) -> FileResponse | None:
+    if not FRONTEND_DIST_DIR.exists():
+        return None
+
+    candidate = (FRONTEND_DIST_DIR / path).resolve()
+    dist_root = FRONTEND_DIST_DIR.resolve()
+    if dist_root != candidate and dist_root not in candidate.parents:
+        return None
+    if not candidate.is_file():
+        return None
+    return FileResponse(candidate)
 
 
 def _uptime_seconds() -> float:
@@ -340,17 +404,31 @@ def _rate_limit_key(request: Request) -> str:
     if admin_token:
         return f"admin:{admin_token}"
 
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        client_ip = forwarded_for.split(",")[0].strip()
-        if client_ip:
-            return f"ip:{client_ip}"
+    if get_config().server.trust_proxy_headers:
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+            if client_ip:
+                return f"ip:{client_ip}"
 
     client_host = request.client.host if request.client else "anonymous"
     return f"ip:{client_host}"
 
 
 def _normalize_request_path(path: str) -> str:
+    fixed_paths = {
+        "/",
+        "/health",
+        "/ready",
+        "/metrics",
+        "/api/sse/events",
+        "/api/sse/ticket",
+        "/api/config/llm",
+        "/api/config/llm/models",
+        "/api/config/llm/test",
+    }
+    if path in fixed_paths:
+        return path
     if path == "/api/game/create":
         return "/api/game/create"
     if re.fullmatch(r"/api/game/[^/]+/replay", path):
@@ -361,4 +439,6 @@ def _normalize_request_path(path: str) -> str:
         return "/api/game/:session_id"
     if re.fullmatch(r"/api/player/[^/]+/action", path):
         return "/api/player/:session_id/action"
-    return path
+    if path == "/api" or path.startswith("/api/"):
+        return "/api/__unmatched__"
+    return "/static"

@@ -1,10 +1,11 @@
-import React, { useState } from 'react'
+import { useCallback, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { Moon, Sun } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useGameStore } from '../../store/useGameStore'
-import { PlayerSeat, type SelectionMode } from './PlayerSeat'
-import type { Player, GamePhase } from '../../types'
+import { PlayerSeat } from './PlayerSeat'
+import type { Player, SelectionMode } from '../../types'
 import { isWolfRole } from '../../types'
+import { isNightPhase } from '../../lib/phases'
 
 interface GameTableProps {
   selectionMode?: SelectionMode
@@ -12,12 +13,32 @@ interface GameTableProps {
   currentSpeakerId?: number | null
   onSelectPlayer?: (playerId: number) => void
   onHoverPlayer?: (playerId: number | null) => void
-  onRightClickPlayer?: (playerId: number, e: React.MouseEvent) => void
-  children?: React.ReactNode // equivalent to center slot
+  onRightClickPlayer?: (playerId: number, e: MouseEvent) => void
+  children?: ReactNode
 }
 
 const PLAYER_COUNT = 12
 const ANGLE_PER_PLAYER = 360 / PLAYER_COUNT
+
+// Seat positions depend only on the (fixed) player id, so precompute them once
+// at module scope. Passing a stable style reference keeps memo(PlayerSeat)
+// effective — a fresh object literal per render would defeat it.
+const SEAT_POSITIONS: Record<number, CSSProperties> = (() => {
+  const positions: Record<number, CSSProperties> = {}
+  const radius = 42
+  for (let id = 1; id <= PLAYER_COUNT; id++) {
+    const angleRadians = ((id - 1) * ANGLE_PER_PLAYER - 90) * (Math.PI / 180)
+    positions[id] = {
+      left: `${50 + radius * Math.cos(angleRadians)}%`,
+      top: `${50 + radius * Math.sin(angleRadians)}%`,
+    }
+  }
+  return positions
+})()
+
+function getPlayerPositionStyle(playerId: number): CSSProperties {
+  return SEAT_POSITIONS[playerId] ?? { left: '50%', top: '50%' }
+}
 
 export function GameTable({
   selectionMode = 'none',
@@ -29,20 +50,33 @@ export function GameTable({
   children
 }: GameTableProps) {
   const [hoveredPlayerId, setHoveredPlayerId] = useState<number | null>(null)
-  
+
   // Connect to global store
   const players = useGameStore(state => state.gameState?.players || [])
   const myPlayer = useGameStore(state => state.gameState?.players.find(p => p.is_human))
   const currentPhase = useGameStore(state => state.gameState?.phase || '')
   const isGameOver = useGameStore(state => state.gameState?.phase === 'GAME_END')
 
-  const isNight = (() => {
-    const nightPhases: GamePhase[] = [
-      'NIGHT_START', 'NIGHT_WOLF_DISCUSS', 'NIGHT_WOLF_VOTE',
-      'NIGHT_SEER', 'NIGHT_WITCH', 'NIGHT_GUARD', 'NIGHT_RESOLVE'
-    ]
-    return nightPhases.includes(currentPhase as GamePhase)
-  })()
+  const isNight = isNightPhase(currentPhase)
+
+  // Stable seat callbacks so hovering one seat re-renders only the two affected
+  // seats (enter + leave), not all 12.
+  const handleSeatClick = useCallback(
+    (player: Player) => onSelectPlayer?.(player.id),
+    [onSelectPlayer]
+  )
+  const handleSeatEnter = useCallback((id: number) => {
+    setHoveredPlayerId(id)
+    onHoverPlayer?.(id)
+  }, [onHoverPlayer])
+  const handleSeatLeave = useCallback(() => {
+    setHoveredPlayerId(null)
+    onHoverPlayer?.(null)
+  }, [onHoverPlayer])
+  const handleSeatContext = useCallback(
+    (player: Player, e: MouseEvent) => onRightClickPlayer?.(player.id, e),
+    [onRightClickPlayer]
+  )
 
   const selectionModeStyle = (() => {
     const styles: Record<SelectionMode, { icon: string; text: string; glowClass: string; textClass: string }> = {
@@ -58,15 +92,6 @@ export function GameTable({
     return styles[selectionMode] || styles['none']
   })()
 
-  function getPlayerPositionStyle(playerId: number) {
-    const angleDegrees = (playerId - 1) * ANGLE_PER_PLAYER - 90
-    const angleRadians = angleDegrees * (Math.PI / 180)
-    const radius = 42
-    const x = 50 + radius * Math.cos(angleRadians)
-    const y = 50 + radius * Math.sin(angleRadians)
-    return { left: `${x}%`, top: `${y}%` }
-  }
-
   function shouldShowRole(player: Player): boolean {
     if (player.is_human) return true
     if (isGameOver) return true
@@ -81,7 +106,7 @@ export function GameTable({
 
     switch (selectionMode) {
       case 'vote': return player.id !== myPlayer.id
-      case 'kill': return !isWolfRole(player.role)
+      case 'kill': return true
       case 'check': return player.id !== myPlayer.id
       case 'protect': return true
       case 'poison': return player.id !== myPlayer.id
@@ -194,16 +219,10 @@ export function GameTable({
             selectionMode={selectionMode}
             className="player-seat"
             style={getPlayerPositionStyle(player.id)}
-            onClick={(p) => onSelectPlayer?.(p.id)}
-            onMouseEnter={(id) => {
-              setHoveredPlayerId(id)
-              onHoverPlayer?.(id)
-            }}
-            onMouseLeave={() => {
-              setHoveredPlayerId(null)
-              onHoverPlayer?.(null)
-            }}
-            onContextMenu={(p, e) => onRightClickPlayer?.(p.id, e)}
+            onClick={handleSeatClick}
+            onMouseEnter={handleSeatEnter}
+            onMouseLeave={handleSeatLeave}
+            onContextMenu={handleSeatContext}
           />
         ))}
 

@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from app.models.api_models import GameLogView, GameStateView, PlayerView, WolfDiscussMessageView
 from app.models.game_state import GamePhase, GameState, Player, Role
+from app.application.projections.projection_policy import (
+    can_view_log,
+    visible_has_acted,
+    visible_pk_votes,
+    visible_portrait,
+    visible_role,
+    visible_skill_usage,
+    visible_votes,
+)
 
 
 class PrivateViewProjector:
@@ -10,7 +19,7 @@ class PrivateViewProjector:
             session_id=game.session_id,
             day=game.day,
             phase=game.phase,
-            players=[self._player_view(player, viewer) for player in game.players],
+            players=[self._player_view(game, player, viewer) for player in game.players],
             game_logs=[
                 GameLogView(
                     id=log.id,
@@ -23,12 +32,12 @@ class PrivateViewProjector:
                     data=log.data,
                 )
                 for log in game.game_logs
-                if log.is_public or log.player_id == viewer.id
+                if can_view_log(game, log, viewer)
             ],
             time_remaining=game.time_remaining,
             winner=game.winner,
-            votes=game.votes if game.phase in {GamePhase.DAY_VOTE, GamePhase.DAY_VOTE_RESULT, GamePhase.SHERIFF_VOTE, GamePhase.SHERIFF_TRANSFER} else {},
-            pk_votes=game.pk_votes if game.phase in {GamePhase.DAY_PK_VOTE, GamePhase.DAY_PK_RESULT} else {},
+            votes=visible_votes(game, viewer),
+            pk_votes=visible_pk_votes(game, viewer),
             pk_candidates=game.pk_candidates,
             wolf_kill_target=game.wolf_kill_target if viewer.role == Role.WITCH and game.phase == GamePhase.NIGHT_WITCH else None,
             dead_players=game.dead_players,
@@ -51,26 +60,20 @@ class PrivateViewProjector:
             ],
         )
 
-    def _player_view(self, player: Player, viewer: Player) -> PlayerView:
-        if viewer.id == player.id:
-            visible_role = player.role
-        elif viewer.role in (Role.WOLF, Role.WOLF_KING) and player.role in (Role.WOLF, Role.WOLF_KING):
-            visible_role = player.role
-        elif not player.is_alive:
-            visible_role = player.role
-        else:
-            visible_role = "unknown"
+    def _player_view(self, game: GameState, player: Player, viewer: Player) -> PlayerView:
+        role = visible_role(game, player, viewer)
+        reveal_skill_usage = visible_skill_usage(game, player, viewer)
 
         return PlayerView(
             id=player.id,
             name=player.name,
-            role=visible_role,
-            portrait=player.portrait,
+            role=role,
+            portrait=visible_portrait(game, player, viewer),
             is_human=viewer.id == player.id,
             is_alive=player.is_alive,
             is_sheriff=player.is_sheriff,
-            has_acted=player.has_acted,
-            poison_used=player.poison_used,
-            antidote_used=player.antidote_used,
-            gun_used=player.gun_used,
+            has_acted=visible_has_acted(game, player, viewer),
+            poison_used=player.poison_used if reveal_skill_usage else False,
+            antidote_used=player.antidote_used if reveal_skill_usage else False,
+            gun_used=player.gun_used if reveal_skill_usage else False,
         )
