@@ -1,0 +1,372 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { getStoredSessionId, useGameStore } from '../store/useGameStore'
+import { cn } from '../lib/utils'
+import { GameTable } from '../components/game/GameTable'
+import { ActionPanel } from '../components/game/ActionPanel'
+import { JudgeArea } from '../components/game/JudgeArea'
+import { DialogBox } from '../components/common/DialogBox'
+import { SidePanel } from '../components/game/SidePanel'
+import { WolfDiscussionModal } from '../components/game/WolfDiscussionModal'
+import { VoteModal } from '../components/game/VoteModal'
+import { NightActionAnimation } from '../components/game/NightActionAnimation'
+import { DiscussionDialog } from '../components/game/DiscussionDialog'
+import type { GameLog, VoteRecord, WolfDiscussMessage } from '../types'
+
+export function GameRoom() {
+  const navigate = useNavigate()
+  const recoveryAttemptedRef = useRef(false)
+  const cancelLoading = useGameStore(state => state.cancelLoading)
+  const clearSession = useGameStore(state => state.clearSession)
+  const currentPhase = useGameStore(state => state.currentPhase)
+  const gameLogs = useGameStore(state => state.gameLogs)
+  const gameState = useGameStore(state => state.gameState)
+  const isCandidate = useGameStore(state => state.isCandidate)
+  const isLoading = useGameStore(state => state.isLoading)
+  const loadingStartTime = useGameStore(state => state.loadingStartTime)
+  const loadingText = useGameStore(state => state.loadingText)
+  const myPlayer = useGameStore(state => state.myPlayer)
+  const recoverSession = useGameStore(state => state.recoverSession)
+  const sessionId = useGameStore(state => state.sessionId)
+  const sheriffId = useGameStore(state => state.sheriffId)
+  const stopPolling = useGameStore(state => state.stopPolling)
+  const winner = useGameStore(state => state.winner)
+  const wolfDiscussMessages = useGameStore(state => state.wolfDiscussMessages)
+  
+  const [loadingElapsed, setLoadingElapsed] = useState(0)
+  
+  const [showWolfModal, setShowWolfModal] = useState(false)
+  const [showVoteModal, setShowVoteModal] = useState(false)
+  const [voteType, setVoteType] = useState<'exile' | 'sheriff'>('exile')
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | undefined
+    if (isLoading) {
+      setLoadingElapsed(0)
+      timer = setInterval(() => {
+        if (loadingStartTime > 0) {
+          setLoadingElapsed(Math.floor((Date.now() - loadingStartTime) / 1000))
+        }
+      }, 1000)
+    } else {
+      setLoadingElapsed(0)
+    }
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+  }, [isLoading, loadingStartTime])
+
+  const isInNightActionPhase = useMemo(() => {
+    const nightActionPhases = [
+      'NIGHT_WOLF_DISCUSS',
+      'NIGHT_WOLF_VOTE', 
+      'NIGHT_SEER',
+      'NIGHT_WITCH',
+      'NIGHT_GUARD'
+    ]
+    return nightActionPhases.includes(currentPhase)
+  }, [currentPhase])
+
+  const isCurrentActionRole = useMemo(() => {
+    const phase = currentPhase
+    const role = myPlayer?.role || ''
+    
+    if (phase === 'NIGHT_WOLF_DISCUSS' || phase === 'NIGHT_WOLF_VOTE') {
+      return ['wolf', 'wolf_king'].includes(role)
+    }
+    if (phase === 'NIGHT_SEER') return role === 'seer'
+    if (phase === 'NIGHT_WITCH') return role === 'witch'
+    if (phase === 'NIGHT_GUARD') return role === 'guard'
+    return false
+  }, [currentPhase, myPlayer?.role])
+
+  const shouldShowLoading = useMemo(() => {
+    if (!isLoading) return false
+    if (isInNightActionPhase && !isCurrentActionRole) return false
+    return true
+  }, [isLoading, isInNightActionPhase, isCurrentActionRole])
+
+  const showDiscussionDialog = useMemo(() => {
+    const phase = currentPhase
+    const myRole = myPlayer?.role || ''
+    const isWolfPlayer = ['wolf', 'wolf_king'].includes(myRole)
+    if (phase === 'NIGHT_WOLF_DISCUSS' && isWolfPlayer) return true
+    if (phase === 'DAY_DISCUSS') return true
+    return false
+  }, [currentPhase, myPlayer?.role])
+
+  const discussionMessages = useMemo(() => {
+    const phase = currentPhase
+    const myRole = myPlayer?.role || ''
+    const isWolfPlayer = ['wolf', 'wolf_king'].includes(myRole)
+    
+    if (phase === 'NIGHT_WOLF_DISCUSS' && isWolfPlayer) {
+      return wolfDiscussMessages.map((message: WolfDiscussMessage) => ({
+        id: message.id,
+        speakerName: `${message.speaker_id}号`,
+        content: message.content,
+      }))
+    }
+    
+    if (phase === 'DAY_DISCUSS') {
+      const dayLogs = gameLogs.filter(
+        (log: GameLog) => log.phase === 'DAY_DISCUSS' && 
+               log.type === 'speech' && 
+               log.content &&
+               log.is_public
+      )
+      
+      return dayLogs.map((log: GameLog) => {
+        const match = log.content.match(/^(\d+)号:\s*(.+)$/)
+        if (match) {
+          return {
+            id: log.id,
+            speakerName: `${match[1]}号`,
+            content: match[2],
+          }
+        }
+        return {
+          id: log.id,
+          speakerName: log.player_id ? `${log.player_id}号` : '未知',
+          content: log.content,
+        }
+      })
+    }
+    return []
+  }, [currentPhase, myPlayer?.role, wolfDiscussMessages, gameLogs])
+
+  const voteRecords = useMemo<VoteRecord[]>(() => {
+    const votes = gameState?.votes || {}
+    const pkVotes = gameState?.pk_votes || {}
+
+    const currentVotes = currentPhase === 'DAY_PK_VOTE' || currentPhase === 'DAY_PK_RESULT'
+      ? pkVotes
+      : votes
+
+    return Object.entries(currentVotes).map(([voterId, targetId]) => ({
+      voterId: Number(voterId),
+      targetId: targetId as number | null,
+      weight: Number(voterId) === sheriffId ? 2 : 1
+    }))
+  }, [currentPhase, gameState?.pk_votes, gameState?.votes, sheriffId])
+
+  const timeRemaining = gameState?.time_remaining || 60
+
+  const winnerText = useMemo(() => {
+    if (winner === 'wolf') return '狼人阵营胜利!'
+    if (winner === 'good') return '好人阵营胜利!'
+    return '游戏结束'
+  }, [winner])
+
+  const winnerTextClass = useMemo(() => {
+    if (winner === 'wolf') return 'text-red-500'
+    if (winner === 'good') return 'text-green-500'
+    return 'text-yellow-500'
+  }, [winner])
+
+  const isNight = useMemo(() => {
+    const nightPhases = [
+      'NIGHT_START',
+      'NIGHT_WOLF_DISCUSS',
+      'NIGHT_WOLF_VOTE',
+      'NIGHT_SEER',
+      'NIGHT_WITCH',
+      'NIGHT_GUARD',
+      'NIGHT_RESOLVE'
+    ]
+    return nightPhases.includes(currentPhase)
+  }, [currentPhase])
+
+  // Watch for phase changes to auto-open modals
+  useEffect(() => {
+    const myRole = myPlayer?.role || ''
+    const isWolfPlayer = ['wolf', 'wolf_king'].includes(myRole)
+    const phase = currentPhase
+
+    if (isWolfPlayer && ['NIGHT_WOLF_DISCUSS', 'NIGHT_WOLF_VOTE'].includes(phase)) {
+       setShowWolfModal(true)
+    }
+    if (!phase.startsWith('NIGHT_')) {
+      setShowWolfModal(false)
+    }
+
+    if (phase === 'DAY_VOTE' || phase === 'DAY_PK_VOTE') {
+      setVoteType('exile')
+      setShowVoteModal(true)
+    } else if (phase === 'SHERIFF_VOTE' && !isCandidate) {
+      setVoteType('sheriff')
+      setShowVoteModal(true)
+    } else if (!['DAY_VOTE_RESULT', 'DAY_PK_RESULT'].includes(phase)) {
+      setShowVoteModal(false)
+    }
+  }, [currentPhase, isCandidate, myPlayer?.role])
+
+  const openWolfModal = () => {
+    const myRole = myPlayer?.role || ''
+    const isWolfPlayer = ['wolf', 'wolf_king'].includes(myRole)
+    if (!isWolfPlayer) {
+      // Show error some way (need to sync with gameStore if it handles error string)
+      return
+    }
+    setShowWolfModal(true)
+  }
+
+  const returnToHome = () => {
+    clearSession()
+    navigate('/')
+  }
+
+  useEffect(() => {
+    const storedSessionId = getStoredSessionId()
+
+    if (!sessionId && storedSessionId && !recoveryAttemptedRef.current) {
+      recoveryAttemptedRef.current = true
+      recoverSession()
+      return
+    }
+
+    if (!sessionId && !storedSessionId) {
+      navigate('/')
+    }
+  }, [navigate, recoverSession, sessionId])
+
+  useEffect(() => {
+    return () => {
+      stopPolling()
+    }
+  }, [stopPolling])
+
+  // Show loading screen while recovering session
+  if (!gameState) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-slate-950 relative overflow-hidden">
+        <img src="/images/game-bg.webp" className="absolute inset-0 w-full h-full object-cover opacity-40" alt="" />
+        <div className="absolute inset-0 bg-black/50" />
+        <div className="relative z-10 flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-2 border-transparent border-t-amber-400 border-l-amber-400/30 rounded-full animate-spin" />
+          <span className="text-white/70 text-sm tracking-wide">正在恢复游戏...</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-screen flex relative overflow-hidden text-slate-100">
+
+      {/* Background Image - switches between night/day */}
+      <img
+        src="/images/game-bg.webp"
+        className={cn(
+          "absolute inset-0 w-full h-full object-cover z-0 transition-opacity duration-1000",
+          isNight ? "opacity-100" : "opacity-0"
+        )}
+        alt=""
+      />
+      <img
+        src="/images/game-bg2.webp"
+        className={cn(
+          "absolute inset-0 w-full h-full object-cover z-0 transition-opacity duration-1000",
+          isNight ? "opacity-0" : "opacity-100"
+        )}
+        alt=""
+      />
+      {/* Dark overlay for UI readability */}
+      <div className={cn(
+        "absolute inset-0 z-0 transition-all duration-1000",
+        isNight ? "bg-black/45" : "bg-black/30"
+      )} />
+      {/* Vignette effect */}
+      <div className="absolute inset-0 z-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(0,0,0,0.2)_50%,rgba(0,0,0,0.6)_100%)]" />
+
+      {/* Main Game Area */}
+      <div className="flex-1 flex flex-col relative z-10 min-w-0 overflow-hidden">
+        <div className="h-[100px] shrink-0 z-10 w-full max-w-5xl mx-auto mt-4 px-4">
+          <JudgeArea />
+        </div>
+
+        <div className="flex-1 relative flex items-center justify-center py-4 px-8 overflow-hidden w-full h-full max-w-6xl mx-auto">
+          <div className="w-full h-full flex items-center justify-center transform scale-90 sm:scale-100 lg:scale-105 transition-transform duration-500">
+            <GameTable />
+          </div>
+        </div>
+
+        <div className="z-20 w-full shrink-0">
+          <ActionPanel />
+        </div>
+      </div>
+
+      <DialogBox />
+
+      <div className="relative z-10">
+        <SidePanel onOpenWolfModal={openWolfModal} />
+      </div>
+
+      <WolfDiscussionModal isOpen={showWolfModal} onClose={() => setShowWolfModal(false)} />
+
+      <VoteModal
+        isOpen={showVoteModal}
+        voteType={voteType}
+        voteRecords={voteRecords}
+        timeRemaining={timeRemaining}
+        onVote={() => setShowVoteModal(false)}
+        onClose={() => setShowVoteModal(false)}
+      />
+
+      {/* Game End Overlay */}
+      {winner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="text-center p-8 bg-gray-900 rounded-lg border-2 border-yellow-500">
+            <h1 className={cn("text-4xl font-bold mb-4", winnerTextClass)}>
+              {winnerText}
+            </h1>
+            <p className="text-gray-400 mb-6">游戏结束</p>
+            <button
+              onClick={returnToHome}
+              className="px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold text-white transition-colors"
+            >
+              返回首页
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Overlay */}
+      {shouldShowLoading && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 transition-opacity duration-400 ease-in-out">
+          <div className="flex flex-col items-center justify-center bg-slate-900/70 backdrop-blur-md p-10 rounded-3xl border border-white/10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)]">
+            <div className="relative w-[120px] h-[120px]">
+              <div className="absolute inset-0 border-2 border-transparent border-t-sky-400 border-l-sky-400/30 rounded-full animate-[spin_2s_linear_infinite]"></div>
+              <div className="absolute inset-[12px] border-2 border-transparent border-b-purple-400 border-r-purple-400/30 rounded-full animate-[spin_3s_linear_infinite_reverse]"></div>
+              <div className="absolute inset-[24px] border-2 border-transparent border-t-amber-400 border-l-amber-400/30 rounded-full animate-[spin_4s_linear_infinite]"></div>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[2rem] animate-[moonPulse_3s_ease-in-out_infinite]">🌙</div>
+            </div>
+            <div className="mt-6 text-[1.1rem] font-medium tracking-[0.1em] text-slate-50 text-center uppercase animate-[pulse_2s_ease-in-out_infinite]">
+              {loadingText}
+            </div>
+            {loadingElapsed > 3 && (
+              <div className="mt-2 text-[0.875rem] text-slate-400 tabular-nums">
+                已等待 {loadingElapsed} 秒
+              </div>
+            )}
+            {loadingElapsed > 5 && (
+              <button 
+                onClick={() => cancelLoading()}
+                className="mt-6 px-8 py-2 bg-red-500/10 border border-red-500/40 rounded-full text-red-300 text-[0.875rem] font-medium tracking-wide transition-all hover:bg-red-500/20 hover:border-red-500/80 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)] hover:-translate-y-px active:translate-y-px"
+              >
+                取消
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <NightActionAnimation />
+
+      <DiscussionDialog
+        messages={discussionMessages}
+        visible={showDiscussionDialog}
+      />
+
+    </div>
+  )
+}

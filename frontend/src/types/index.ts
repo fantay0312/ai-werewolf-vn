@@ -98,8 +98,8 @@ export interface GameLog {
   content: string
   player_id?: number
   is_public: boolean
-  type: 'normal' | 'broadcast' | 'speech' | 'action'
-  data?: Record<string, any>
+  type: 'normal' | 'broadcast' | 'speech' | 'action' | 'death' | 'vote' | 'skill' | 'system' | 'judge'
+  data?: Record<string, unknown>
 }
 
 export interface WolfDiscussMessage {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface TypeWriterProps {
   text: string
@@ -34,6 +34,11 @@ function highlightText(fullText: string) {
 export function TypeWriter({ text, speed = 30, onFinished, highlight = true }: TypeWriterProps) {
   const [displayedLength, setDisplayedLength] = useState(0)
   const [isTyping, setIsTyping] = useState(false)
+  const onFinishedRef = useRef(onFinished)
+
+  useEffect(() => {
+    onFinishedRef.current = onFinished
+  }, [onFinished])
 
   useEffect(() => {
     setDisplayedLength(0)
@@ -41,7 +46,7 @@ export function TypeWriter({ text, speed = 30, onFinished, highlight = true }: T
 
     if (!text) {
       setIsTyping(false)
-      onFinished?.()
+      onFinishedRef.current?.()
       return
     }
 
@@ -55,14 +60,14 @@ export function TypeWriter({ text, speed = 30, onFinished, highlight = true }: T
         timeoutId = setTimeout(typeNext, speed)
       } else {
         setIsTyping(false)
-        onFinished?.()
+        onFinishedRef.current?.()
       }
     }
 
     timeoutId = setTimeout(typeNext, speed)
 
     return () => clearTimeout(timeoutId)
-  }, [text, speed]) // intentionally matching Vue logic which restarts on prop change
+  }, [text, speed])
 
   const displayedText = text.substring(0, displayedLength)
 

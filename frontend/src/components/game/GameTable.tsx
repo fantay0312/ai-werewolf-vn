@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState, type MouseEvent, type ReactNode } from 'react'
 import { Moon, Sun } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useGameStore } from '../../store/useGameStore'
@@ -12,8 +12,8 @@ interface GameTableProps {
   currentSpeakerId?: number | null
   onSelectPlayer?: (playerId: number) => void
   onHoverPlayer?: (playerId: number | null) => void
-  onRightClickPlayer?: (playerId: number, e: React.MouseEvent) => void
-  children?: React.ReactNode // equivalent to center slot
+  onRightClickPlayer?: (playerId: number, e: MouseEvent) => void
+  children?: ReactNode
 }
 
 const PLAYER_COUNT = 12
@@ -81,7 +81,7 @@ export function GameTable({
 
     switch (selectionMode) {
       case 'vote': return player.id !== myPlayer.id
-      case 'kill': return !isWolfRole(player.role)
+      case 'kill': return true
       case 'check': return player.id !== myPlayer.id
       case 'protect': return true
       case 'poison': return player.id !== myPlayer.id

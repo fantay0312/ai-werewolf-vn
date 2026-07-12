@@ -1,4 +1,4 @@
-import React from 'react'
+import type { CSSProperties, MouseEvent } from 'react'
 import { Skull, Crown } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { Player, Role } from '../../types'
@@ -25,9 +25,15 @@ interface PlayerSeatProps {
   onClick?: (player: Player) => void
   onMouseEnter?: (id: number) => void
   onMouseLeave?: () => void
-  onContextMenu?: (player: Player, e: React.MouseEvent) => void
+  onContextMenu?: (player: Player, e: MouseEvent) => void
   className?: string
-  style?: React.CSSProperties
+  style?: CSSProperties
+}
+
+const PORTRAIT_ROLES = new Set(['villager', 'wolf', 'wolf_king', 'seer', 'witch', 'guard', 'hunter'])
+
+function getPortraitUrl(role: string): string | null {
+  return PORTRAIT_ROLES.has(role) ? `/images/portraits/${role}.webp` : null
 }
 
 const selectionModeIcons: Record<SelectionMode, string> = {
@@ -60,6 +66,7 @@ export function PlayerSeat({
 }: PlayerSeatProps) {
   const isDead = !player.is_alive
   const roleName = ROLE_NAMES[player.role as Role] || player.role
+  const portraitUrl = showRole ? getPortraitUrl(player.role) : null
 
   const cssFrameColor = (() => {
     if (isDead) return 'rgba(159, 18, 57, 0.8)' // rose-900 border
@@ -153,16 +160,30 @@ export function PlayerSeat({
         {/* 发光戒指特效 */}
         <div 
           className="glowing-ring absolute inset-0 rounded-full z-0 transition-all duration-300" 
-          style={{ '--ring-color': cssFrameColor } as React.CSSProperties}
+          style={{ '--ring-color': cssFrameColor } as CSSProperties}
         ></div>
 
-        {/* 玩家编号 */}
-        <div className={cn(
-          "seat-number relative z-10 text-xl font-bold font-mono tracking-tighter text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]",
-          isDead ? "opacity-0" : "opacity-100"
-        )}>
-          {player.id}
-        </div>
+        {/* Portrait or Number */}
+        {portraitUrl && !isDead ? (
+          <img
+            src={portraitUrl}
+            alt={roleName}
+            className="absolute inset-0 w-full h-full object-cover rounded-full z-[1]"
+          />
+        ) : (
+          <div className={cn(
+            "seat-number relative z-10 text-xl font-bold font-mono tracking-tighter text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]",
+            isDead ? "opacity-0" : "opacity-100"
+          )}>
+            {player.id}
+          </div>
+        )}
+        {/* Player ID overlay on portrait */}
+        {portraitUrl && !isDead && (
+          <div className="absolute bottom-0 right-0 z-10 w-5 h-5 rounded-full bg-black/70 flex items-center justify-center text-[10px] font-bold text-white border border-white/30">
+            {player.id}
+          </div>
+        )}
 
         {/* 死亡标记 */}
         {isDead && (

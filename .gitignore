@@ -50,6 +50,7 @@ yarn-error.log*
 
 # Build outputs
 frontend/dist/
+frontend/.vite/
 *.tsbuildinfo
 
 # IDE
