@@ -91,14 +91,18 @@ def test_game_state_endpoint_hides_other_skill_state_and_live_votes():
     viewer_state = get_state(client, session_id, headers)
     public_state = get_state(client, session_id)
 
+    assert viewer_state["votes"] == {str(human.id): witch.id}
+    assert public_state["votes"] == {}
+
     for payload in (viewer_state, public_state):
-        assert payload["votes"] == {}
         projected_witch = next(player for player in payload["players"] if player["id"] == witch.id)
         projected_hunter = next(player for player in payload["players"] if player["id"] == hunter.id)
         assert projected_witch["role"] == "unknown"
+        assert projected_witch["portrait"] == ""
         assert projected_witch["poison_used"] is False
         assert projected_witch["antidote_used"] is False
         assert projected_hunter["role"] == "unknown"
+        assert projected_hunter["portrait"] == ""
         assert projected_hunter["gun_used"] is False
 
 

@@ -407,6 +407,12 @@ class GameManager:
                 pass
             elif game.phase == GamePhase.SHERIFF_TRANSFER and action.type == ActionType.VOTE:
                 pass
+            elif (
+                game.phase == GamePhase.DAY_LAST_WORDS
+                and player.id in game.dead_players
+                and action.type in (ActionType.SPEECH, ActionType.CONFIRM, ActionType.PASS)
+            ):
+                pass
             elif action.type == ActionType.PASS:
                 pass
             else:

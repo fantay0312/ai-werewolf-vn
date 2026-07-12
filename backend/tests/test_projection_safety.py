@@ -4,7 +4,12 @@ from app.models.game_state import GameLog, GamePhase, GameState, Player, Role
 
 
 def _player(player_id: int, role: Role) -> Player:
-    return Player(id=player_id, name=f"{player_id}号玩家", role=role, portrait="")
+    return Player(
+        id=player_id,
+        name=f"{player_id}号玩家",
+        role=role,
+        portrait=f"/images/portraits/{role.value}.webp",
+    )
 
 
 def _sensitive_game(phase: GamePhase) -> GameState:
@@ -46,7 +51,7 @@ def test_public_projection_hides_live_votes_roles_and_skill_usage():
     assert all(log.id != "legacy-public-live-vote" for log in view.game_logs)
 
 
-def test_private_projection_shows_only_owner_skill_usage_and_hides_live_votes():
+def test_private_projection_shows_owner_skill_usage_and_only_owner_live_vote():
     game = _sensitive_game(GamePhase.DAY_VOTE)
     witch = game.players[0]
 
@@ -58,7 +63,54 @@ def test_private_projection_shows_only_owner_skill_usage_and_hides_live_votes():
     assert own_view.poison_used is True
     assert own_view.antidote_used is True
     assert hunter_view.gun_used is False
-    assert view.votes == {}
+    assert view.votes == {witch.id: game.votes[witch.id]}
+
+
+def test_hidden_roles_also_hide_role_named_portraits():
+    game = _sensitive_game(GamePhase.DAY_DISCUSS)
+    witch = game.players[0]
+
+    public_view = PublicViewProjector().project(game)
+    private_view = PrivateViewProjector().project(game, witch)
+
+    assert all(player.portrait == "" for player in public_view.players)
+    assert private_view.players[0].portrait == witch.portrait
+    assert all(player.portrait == "" for player in private_view.players[1:])
+
+
+def test_night_has_acted_is_visible_only_for_private_viewer():
+    game = _sensitive_game(GamePhase.NIGHT_WITCH)
+    witch, hunter, _ = game.players
+    witch.has_acted = True
+    hunter.has_acted = True
+
+    public_view = PublicViewProjector().project(game)
+    private_view = PrivateViewProjector().project(game, witch)
+
+    assert all(player.has_acted is False for player in public_view.players)
+    assert private_view.players[0].has_acted is True
+    assert all(player.has_acted is False for player in private_view.players[1:])
+
+    game.phase = GamePhase.DAY_DISCUSS
+    day_view = PublicViewProjector().project(game)
+    assert [player.has_acted for player in day_view.players] == [True, True, False]
+
+
+def test_active_vote_projections_show_only_private_viewers_own_ballot():
+    game = _sensitive_game(GamePhase.DAY_VOTE)
+    witch, hunter, villager = game.players
+
+    assert PublicViewProjector().project(game).votes == {}
+    assert PrivateViewProjector().project(game, witch).votes == {witch.id: 2}
+    assert PrivateViewProjector().project(game, hunter).votes == {hunter.id: 1}
+    assert PrivateViewProjector().project(game, villager).votes == {}
+
+    game.phase = GamePhase.SHERIFF_VOTE
+    assert PrivateViewProjector().project(game, witch).votes == {witch.id: 2}
+
+    game.phase = GamePhase.DAY_PK_VOTE
+    assert PublicViewProjector().project(game).pk_votes == {}
+    assert PrivateViewProjector().project(game, villager).pk_votes == {villager.id: 1}
 
 
 def test_vote_details_appear_only_in_result_projection():
@@ -78,3 +130,6 @@ def test_game_end_projection_fully_reveals_roles_and_skill_usage():
     assert view.players[0].poison_used is True
     assert view.players[0].antidote_used is True
     assert view.players[1].gun_used is True
+    assert [player.portrait for player in view.players] == [
+        player.portrait for player in game.players
+    ]

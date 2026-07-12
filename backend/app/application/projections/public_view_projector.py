@@ -4,7 +4,9 @@ from app.models.api_models import GameLogView, GameStateView, PlayerView
 from app.models.game_state import GameState
 from app.application.projections.projection_policy import (
     can_view_log,
+    visible_has_acted,
     visible_pk_votes,
+    visible_portrait,
     visible_role,
     visible_skill_usage,
     visible_votes,
@@ -22,11 +24,11 @@ class PublicViewProjector:
                     id=player.id,
                     name=player.name,
                     role=visible_role(game, player),
-                    portrait=player.portrait,
+                    portrait=visible_portrait(game, player),
                     is_human=False,
                     is_alive=player.is_alive,
                     is_sheriff=player.is_sheriff,
-                    has_acted=player.has_acted,
+                    has_acted=visible_has_acted(game, player),
                     poison_used=player.poison_used if visible_skill_usage(game, player) else False,
                     antidote_used=player.antidote_used if visible_skill_usage(game, player) else False,
                     gun_used=player.gun_used if visible_skill_usage(game, player) else False,

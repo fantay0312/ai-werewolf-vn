@@ -51,6 +51,11 @@ def test_sheriff_vote_structured_events_for_election_and_abstain():
     assert handler.try_advance() == GamePhase.NIGHT_START
     tally_log = _latest_event(game, "sheriff_vote_tallied")
     assert tally_log.data["votes"] == {3: 1, 4: 0}
+    assert tally_log.data["vote_entries"] == [
+        {"voter_id": 3, "target_id": 1, "target_label": "1号", "weight": 1},
+        {"voter_id": 4, "target_id": 0, "target_label": "弃票", "weight": 1},
+    ]
+    assert tally_log.is_public is True
     assert tally_log.data["abstain_voter_ids"] == [4]
     assert tally_log.data["abstain_count"] == 1
     elected_log = _latest_event(game, "sheriff_elected")

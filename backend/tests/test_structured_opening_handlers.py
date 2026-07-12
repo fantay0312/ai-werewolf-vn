@@ -149,9 +149,9 @@ def test_sheriff_election_emits_structured_start_actions_and_close():
     candidate_log = _find_event_log(game.game_logs, "sheriff_candidacy_declared")
     assert candidate_log.data["action"] == ActionType.RUN_FOR_SHERIFF.value
     assert candidate_log.data["player_id"] == 2
-    assert candidate_log.data["is_wolf_candidate"] is True
     assert candidate_log.data["sheriff_candidate_ids"] == [2]
-    assert candidate_log.data["wolf_candidate_ids"] == [2]
+    assert "is_wolf_candidate" not in candidate_log.data
+    assert "wolf_candidate_ids" not in candidate_log.data
 
     assert handler.process_action(ActionRequest(player_id=1, type=ActionType.PASS)) is True
     assert handler.process_action(ActionRequest(player_id=3, type=ActionType.PASS)) is True
@@ -185,6 +185,6 @@ def test_sheriff_election_cancelled_emits_structured_summary():
     log = _find_event_log(game.game_logs, "sheriff_election_cancelled")
     assert log.data["reason"] == "double_self_explode"
     assert log.data["election_explode_count"] == 2
-    assert log.data["wolf_candidate_ids"] == [2]
+    assert "wolf_candidate_ids" not in log.data
     assert log.data["next_phase_hint"] == GamePhase.NIGHT_START.value
     assert handler.try_advance() == GamePhase.NIGHT_START

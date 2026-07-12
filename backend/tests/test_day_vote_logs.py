@@ -63,6 +63,7 @@ def test_day_vote_result_logs_include_tally_and_exile_metadata():
     exile_log = game.game_logs[-1]
 
     assert tally_log.data["event"] == "day_vote_tallied"
+    assert tally_log.is_public is True
     assert tally_log.data["votes"] == {1: 2, 3: 2, 4: 5}
     assert tally_log.data["vote_counts"] == {2: 3, 5: 1}
     assert tally_log.data["abstain_count"] == 0

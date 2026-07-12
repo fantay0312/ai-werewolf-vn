@@ -9,11 +9,11 @@ PHASE_ACTIONS: dict[GamePhase, set[ActionType]] = {
     GamePhase.GAME_START: {ActionType.CONFIRM, ActionType.PASS},
     GamePhase.NIGHT_WOLF_DISCUSS: {ActionType.SPEECH, ActionType.PASS},
     GamePhase.NIGHT_WOLF_VOTE: {ActionType.KILL},
-    GamePhase.NIGHT_SEER: {ActionType.CHECK},
+    GamePhase.NIGHT_SEER: {ActionType.CHECK, ActionType.PASS},
     GamePhase.NIGHT_WITCH: {ActionType.SAVE, ActionType.POISON, ActionType.PASS},
     GamePhase.NIGHT_GUARD: {ActionType.GUARD, ActionType.PASS},
     GamePhase.DAY_START: {ActionType.CONFIRM, ActionType.PASS},
-    GamePhase.DAY_LAST_WORDS: {ActionType.SPEECH, ActionType.PASS},
+    GamePhase.DAY_LAST_WORDS: {ActionType.SPEECH, ActionType.PASS, ActionType.CONFIRM},
     GamePhase.DAY_DISCUSS: {ActionType.SPEECH, ActionType.PASS, ActionType.CONFIRM},
     GamePhase.DAY_VOTE: {ActionType.VOTE},
     GamePhase.DAY_VOTE_RESULT: {ActionType.CONFIRM, ActionType.PASS},
@@ -60,7 +60,12 @@ class CommandValidator:
             issues.append("当前只有被指定的狼人可以重新决定击杀目标")
 
         if (
-            snapshot.phase in {GamePhase.DAY_DISCUSS, GamePhase.SHERIFF_SPEECH, GamePhase.DAY_PK_SPEECH}
+            snapshot.phase in {
+                GamePhase.DAY_DISCUSS,
+                GamePhase.DAY_LAST_WORDS,
+                GamePhase.SHERIFF_SPEECH,
+                GamePhase.DAY_PK_SPEECH,
+            }
             and snapshot.current_speaker_id is not None
             and command.actor_id != snapshot.current_speaker_id
         ):

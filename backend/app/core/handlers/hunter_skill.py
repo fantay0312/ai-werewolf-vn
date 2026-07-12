@@ -101,11 +101,9 @@ class HunterSkillHandler(PhaseHandler):
         return False
 
     def try_advance(self) -> GamePhase:
-        if self.game.winner:
-            return GamePhase.GAME_END
-
         shooter = self._find_shooter()
         if shooter:
+            self.game.winner = None
             return None
 
         # Check for Sheriff Transfer
@@ -113,6 +111,7 @@ class HunterSkillHandler(PhaseHandler):
             (p for p in self.game.players if not p.is_alive and p.is_sheriff), None
         )
         if dead_sheriff:
+            self.game.winner = None
             self.add_log(
                 "死亡技能结算后进入警徽移交。",
                 is_public=False,
@@ -124,6 +123,9 @@ class HunterSkillHandler(PhaseHandler):
                 ),
             )
             return GamePhase.SHERIFF_TRANSFER
+
+        if self.evaluate_win_condition():
+            return GamePhase.GAME_END
 
         if hasattr(self.game, 'next_phase_after_skill') and self.game.next_phase_after_skill:
             self.add_log(

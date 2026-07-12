@@ -11,13 +11,12 @@ class NightResolveHandler(PhaseHandler):
 
     def on_enter(self):
         resolved_day = self.game.day
-        self._resolved_day = resolved_day
         dead_player_ids = Rules.resolve_night_deaths(self.game)
-        self._poisoned_ids = [
+        poisoned_ids = [
             pid for pid in dead_player_ids
             if self.game.wolf_kill_target != pid
         ]
-        self._death_records = []
+        death_records = []
 
         # 可选房规：被毒警长强制流失警徽；标准规则允许移交。
         self.sheriff_poisoned = False
@@ -51,7 +50,7 @@ class NightResolveHandler(PhaseHandler):
                     DeathCause.WITCH_POISON if player.poisoned_by_witch else DeathCause.WOLF_KILL
                 )
                 self.record_death(player, death_cause)
-                self._death_records.append(
+                death_records.append(
                     {
                         "player_id": player.id,
                         "role": player.role.value,
@@ -68,7 +67,7 @@ class NightResolveHandler(PhaseHandler):
         self.game.last_resolved_night = resolved_day
         self.evaluate_win_condition()
         alive_wolves = self.alive_wolf_count()
-        self._eligible_shooters = [
+        eligible_shooters = [
             player.id
             for player in self.game.players
             if (
@@ -94,9 +93,9 @@ class NightResolveHandler(PhaseHandler):
             next_day=resolved_day + 1,
             wolf_kill_target=self.game.wolf_kill_target,
             dead_player_ids=dead_player_ids,
-            death_records=self._death_records,
-            poisoned_player_ids=list(self._poisoned_ids),
-            eligible_shooter_ids=list(self._eligible_shooters),
+            death_records=death_records,
+            poisoned_player_ids=poisoned_ids,
+            eligible_shooter_ids=eligible_shooters,
             sheriff_id_before=sheriff_id_before,
             sheriff_id_after=self.game.sheriff_id,
             sheriff_poisoned=self.sheriff_poisoned,
@@ -115,10 +114,7 @@ class NightResolveHandler(PhaseHandler):
 
     def try_advance(self) -> GamePhase:
         dead_ids = self.game.dead_players
-        resolved_day = getattr(self, "_resolved_day", self.game.day - 1)
-
-        if self.game.winner:
-            return GamePhase.GAME_END
+        resolved_day = self.game.last_resolved_night or self.game.day - 1
 
         # Check for shooters (Hunter/Wolf King not poisoned)
         for pid in dead_ids:
@@ -130,6 +126,7 @@ class NightResolveHandler(PhaseHandler):
                 and Rules.can_shoot(player, player.death_cause, alive_wolves=self.alive_wolf_count())
             ):
                 self.game.next_phase_after_skill = GamePhase.DAY_START
+                self.game.winner = None
                 self.add_log(
                     "夜晚结算检测到开枪窗口。",
                     is_public=False,
@@ -147,7 +144,10 @@ class NightResolveHandler(PhaseHandler):
                 return GamePhase.HUNTER_SKILL
 
         # 房规启用时，被毒警长不进入移交阶段。
-        if self.sheriff_badge_lost:
+        sheriff_badge_lost = getattr(self, "sheriff_badge_lost", False)
+        if sheriff_badge_lost:
+            if self.game.winner:
+                return GamePhase.GAME_END
             self.add_log(
                 "夜晚结算后直接进入白天阶段。",
                 is_public=False,
@@ -166,6 +166,7 @@ class NightResolveHandler(PhaseHandler):
             player = self.find_player(pid)
             if player and player.is_sheriff:
                 self.game.next_phase_after_skill = GamePhase.DAY_START
+                self.game.winner = None
                 self.add_log(
                     "夜晚结算检测到警徽移交窗口。",
                     is_public=False,
@@ -180,6 +181,9 @@ class NightResolveHandler(PhaseHandler):
                     ),
                 )
                 return GamePhase.SHERIFF_TRANSFER
+
+        if self.game.winner:
+            return GamePhase.GAME_END
 
         self.add_log(
             "夜晚结算后直接进入白天阶段。",

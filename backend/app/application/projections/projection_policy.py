@@ -21,15 +21,31 @@ def visible_skill_usage(game: GameState, player: Player, viewer: Player | None =
     return game.phase == GamePhase.GAME_END or bool(viewer and viewer.id == player.id)
 
 
-def visible_votes(game: GameState) -> dict[int, int]:
+def visible_portrait(game: GameState, player: Player, viewer: Player | None = None) -> str:
+    return player.portrait if visible_role(game, player, viewer) == player.role else ""
+
+
+def visible_has_acted(game: GameState, player: Player, viewer: Player | None = None) -> bool:
+    if game.phase.value.startswith("NIGHT_") and (viewer is None or viewer.id != player.id):
+        return False
+    return player.has_acted
+
+
+def visible_votes(game: GameState, viewer: Player | None = None) -> dict[int, int]:
     if game.phase == GamePhase.DAY_VOTE_RESULT:
         return game.votes
+    if game.phase in {GamePhase.DAY_VOTE, GamePhase.SHERIFF_VOTE} and viewer is not None:
+        if viewer.id in game.votes:
+            return {viewer.id: game.votes[viewer.id]}
     return {}
 
 
-def visible_pk_votes(game: GameState) -> dict[int, int]:
+def visible_pk_votes(game: GameState, viewer: Player | None = None) -> dict[int, int]:
     if game.phase == GamePhase.DAY_PK_RESULT:
         return game.pk_votes
+    if game.phase == GamePhase.DAY_PK_VOTE and viewer is not None:
+        if viewer.id in game.pk_votes:
+            return {viewer.id: game.pk_votes[viewer.id]}
     return {}
 
 
