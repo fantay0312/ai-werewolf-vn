@@ -70,6 +70,24 @@
 - 🟡 `game_manager.py:790` 猎人 fallback 随机开枪带走一人 → 应 PASS (不开枪) 更安全。
 - 🟡 `rules.py:20` 胜负未含"狼人数≥好人数"即胜的常见规则 (低优先级, 屠边规则下影响小)。
 
-## Opus 七域审计 (交叉验证源 B)
+## Opus 七域审计 (交叉验证源 B) — 101 issues, 明细见 scratchpad/audit_results.json
 
-(待 workflow wf_231b54ca-5c6 返回后填充)
+**修正 Fable 前述结论**: 警长竞选并未断——真实流程为 GAME_START → SHERIFF_ELECTION → NIGHT_START
+(竞选在首夜前, 房规顺序, 功能正常)。day_start 里 `day==1` 竞选分支只是死代码。首夜遗言不可达维持成立。
+
+### HIGH 汇总 (去重后)
+- 后端核心: 白天死亡(放逐/PK/开枪/自爆)不查胜负 → 已定胜负仍跑完整"幽灵夜晚"; 首夜遗言不可达;
+  AI 双失败卡死发言窗口 (speaker 指针不推进 → 永久卡局); GAME_END 无 handler (=Codex F5)
+- 后端 AI: memory_manager.save_to_player 丢 _runtime_meta → 相位变更检测失效; DeathRecord 记当前
+  day/phase 而非真实死亡时刻 (绝对事实层污染); prompt_builder 与 PHASE_PROMPT_CONTRACTS 双份相位契约已漂移
+- 后端 infra: metrics 路径 label 无界基数 (SPA catch-all 任意 URL 都建 histogram 序列)
+- SSE 断层 (双审计员一致): 后端完整 SSE 管道存在但前端零消费, 2s 全量轮询; 且浏览器 EventSource
+  无法带 X-Player-Token 头 → 私有流对浏览器不可达 (需 ticket 查询参数)
+- 前端: store.error 无任何组件消费 (所有错误静默); 轮询无失败策略 (404 后每 2s 打服务器到永远);
+  恢复页无超时死局; 无 ErrorBoundary (白屏); VoteModal PK 票不限 pk_candidates (可投非 PK 者);
+  GameTable 满套交互 API 零接线 (点座位/高亮全失效)
+- 样式: 19 issues 全 MED/LOW (死样式/重复/token 化), 无 HIGH
+
+### 处置
+全部纳入 plan.md 工作流 (WS-A Pass1/2, WS-B Chunk1/2/3); Codex F6 (狼自刀) 驳回不修;
+F11 (末狼狼王枪) 降级暂缓。
