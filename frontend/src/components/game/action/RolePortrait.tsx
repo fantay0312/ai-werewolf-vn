@@ -35,7 +35,7 @@ export function RolePortrait({ role }: RolePortraitProps) {
 
       {showCard && (
         <div
-          className="role-card-modal fixed left-5 bottom-4 w-[360px] h-[540px] rounded-2xl overflow-hidden cursor-pointer z-[100] shadow-[0_10px_40px_rgba(0,0,0,0.6),0_0_20px_rgba(139,92,246,0.3)] border border-white/10 bg-slate-900 animate-scale-in"
+          className="role-card-modal fixed left-5 bottom-4 w-[360px] h-[540px] rounded-2xl overflow-hidden cursor-pointer z-[100] shadow-[0_10px_40px_rgba(0,0,0,0.6),0_0_20px_rgba(197,160,89,0.35)] border border-[color:var(--border-gilded)] bg-[#141210] animate-scale-in"
           onClick={() => setShowCard(false)}
         >
           <img
@@ -44,8 +44,8 @@ export function RolePortrait({ role }: RolePortraitProps) {
             className="w-full h-full object-cover"
           />
           <div className="role-card-info absolute bottom-0 inset-x-0 p-5 bg-gradient-to-t from-black/90 to-transparent">
-            <h3 className="text-2xl font-bold text-[#f4d03f] mb-2 drop-shadow-md">{roleName}</h3>
-            <p className="text-sm text-white/85 leading-relaxed">
+            <h3 className="font-display text-2xl font-bold text-[#f4d03f] mb-2 drop-shadow-md tracking-wide">{roleName}</h3>
+            <p className="text-sm text-parchment/90 leading-relaxed">
               {ROLE_DESCRIPTIONS[role as keyof typeof ROLE_DESCRIPTIONS]}
             </p>
           </div>

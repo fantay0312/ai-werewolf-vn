@@ -1,6 +1,6 @@
 // Single source of truth for role display: names, colors, portrait/card art.
 // Migrated here from duplicated copies in PlayerSeat / ActionPanel / VoteModal /
-// SidePanel / WolfDiscussionModal / DialogBox.
+// SidePanel / DialogBox.
 import type { Role } from '../types'
 import { ROLE_NAMES, isWolfRole } from '../types'
 

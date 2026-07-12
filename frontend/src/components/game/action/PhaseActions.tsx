@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react'
+import {
+  Check, Swords, Eye, Shield, Target, Crosshair, FlaskConical, Heart, Skull,
+  Award, Star, MessageCircle, Flame, Mic, Bomb, Vote, Ghost, type LucideIcon,
+} from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import type { ActionType, GamePhase, Player } from '../../../types'
 import { isWolfRole } from '../../../types'
@@ -35,11 +39,12 @@ const CONFIRM_TEXT: Partial<Record<GamePhase, string>> = {
 interface TargetActionDef {
   match: (me: Player) => boolean
   groupClass: string
+  Icon: LucideIcon
   label: string
   action: ActionType
   confirmLabel: string
   confirmClass: string
-  confirmIcon?: string
+  confirmIcon?: LucideIcon
   secondary?: { label: string; className: string; action: ActionType }
 }
 
@@ -48,25 +53,25 @@ interface TargetActionDef {
 const TARGET_ACTIONS: Partial<Record<GamePhase, TargetActionDef>> = {
   NIGHT_WOLF_VOTE: {
     match: me => isWolfRole(me.role),
-    groupClass: 'wolf', label: '🐺 狼人击杀', action: 'kill',
-    confirmLabel: '击杀', confirmClass: 'btn-danger', confirmIcon: '🗡️',
+    groupClass: 'wolf', Icon: Swords, label: '狼人击杀', action: 'kill',
+    confirmLabel: '击杀', confirmClass: 'btn-danger', confirmIcon: Swords,
   },
   NIGHT_SEER: {
     match: me => me.role === 'seer',
-    groupClass: 'seer', label: '🔮 预言家行动', action: 'check',
+    groupClass: 'seer', Icon: Eye, label: '预言家行动', action: 'check',
     confirmLabel: '查验', confirmClass: 'btn-purple',
     secondary: { label: '跳过', className: 'btn-secondary', action: 'pass' },
   },
   NIGHT_GUARD: {
     match: me => me.role === 'guard',
-    groupClass: 'guard', label: '🛡️ 守卫行动', action: 'guard',
+    groupClass: 'guard', Icon: Shield, label: '守卫行动', action: 'guard',
     confirmLabel: '守护', confirmClass: 'btn-gold',
     secondary: { label: '空守', className: 'btn-secondary', action: 'pass' },
   },
   HUNTER_SKILL: {
     match: me => (me.role === 'hunter' || me.role === 'wolf_king') && !me.is_alive,
-    groupClass: 'hunter', label: '🎯 猎人技能', action: 'shoot',
-    confirmLabel: '开枪', confirmClass: 'btn-danger btn-glow', confirmIcon: '🔫',
+    groupClass: 'hunter', Icon: Target, label: '猎人技能', action: 'shoot',
+    confirmLabel: '开枪', confirmClass: 'btn-danger btn-glow', confirmIcon: Crosshair,
     secondary: { label: '不开枪', className: 'btn-secondary', action: 'pass' },
   },
 }
@@ -81,9 +86,10 @@ interface TargetActionGroupProps {
 
 function TargetActionGroup({ def, selectedTargetId, onSelectTarget, onConfirm, onSecondary }: TargetActionGroupProps) {
   const secondary = def.secondary
+  const ConfirmIcon = def.confirmIcon
   return (
     <div className={cn('action-group', def.groupClass)}>
-      <span className="action-label">{def.label}</span>
+      <span className="action-label"><def.Icon className="w-4 h-4" strokeWidth={1.5} />{def.label}</span>
       <div className="input-group">
         <input
           type="number" min={1} max={12} placeholder="目标ID"
@@ -97,7 +103,7 @@ function TargetActionGroup({ def, selectedTargetId, onSelectTarget, onConfirm, o
           className={cn('btn', def.confirmClass)}
           disabled={selectedTargetId === null}
         >
-          {def.confirmIcon && <span className="btn-icon">{def.confirmIcon}</span>}
+          {ConfirmIcon && <ConfirmIcon className="w-4 h-4" strokeWidth={1.5} />}
           {def.confirmLabel}
         </button>
         {secondary && (
@@ -182,14 +188,15 @@ export function PhaseActions({
     <>
       {isAlive && confirmText && (
         <button onClick={() => runSimple('confirm')} className="btn btn-primary btn-glow">
-          <span className="btn-icon">✨</span>
+          <Check className="w-4 h-4" strokeWidth={1.5} />
           <span>{confirmText}</span>
         </button>
       )}
 
       {isAlive && phase === 'NIGHT_WOLF_DISCUSS' && isWolf && (
         <SpeechComposer
-          label="🐺 狼人密谋"
+          label="狼人密谋"
+          icon={Swords}
           wrapperClassName="wolf wide-group flex-col items-stretch"
           inputGroupClassName="wide flex-1 w-full max-w-lg"
           value={speech}
@@ -213,10 +220,10 @@ export function PhaseActions({
 
       {isAlive && phase === 'NIGHT_WITCH' && myPlayer.role === 'witch' && (
         <div className="action-group witch">
-          <span className="action-label">🧪 女巫行动</span>
+          <span className="action-label"><FlaskConical className="w-4 h-4" strokeWidth={1.5} />女巫行动</span>
           <div className="input-group">
             <button onClick={() => runSimple('save')} className="btn btn-success">
-              <span className="btn-icon">💚</span>解药
+              <Heart className="w-4 h-4" strokeWidth={1.5} />解药
             </button>
             <input
               type="number" min={1} max={12} placeholder="毒杀ID"
@@ -226,7 +233,7 @@ export function PhaseActions({
               onChange={e => onSelectTarget(e.target.value === '' ? null : Number(e.target.value))}
             />
             <button onClick={() => runTarget('poison')} className="btn btn-poison" disabled={selectedTargetId === null}>
-              <span className="btn-icon">💀</span>毒药
+              <Skull className="w-4 h-4" strokeWidth={1.5} />毒药
             </button>
             <button onClick={() => runSimple('pass')} className="btn btn-secondary">跳过</button>
           </div>
@@ -235,7 +242,8 @@ export function PhaseActions({
 
       {isAlive && phase === 'DAY_DISCUSS' && (
         <SpeechComposer
-          label="💬 发言"
+          label="发言"
+          icon={MessageCircle}
           wrapperClassName="speech wide-group flex-col items-stretch max-w-[600px] w-full"
           inputGroupClassName="wide w-full flex"
           value={speech}
@@ -251,7 +259,8 @@ export function PhaseActions({
           and accepts SPEECH + CONFIRM, so without this they deadlock the game. */}
       {isLastWordsSpeaker && (
         <SpeechComposer
-          label="🕯️ 遗言"
+          label="遗言"
+          icon={Flame}
           wrapperClassName="speech wide-group flex-col items-stretch max-w-[600px] w-full"
           inputGroupClassName="wide w-full flex"
           value={speech}
@@ -266,7 +275,8 @@ export function PhaseActions({
           candidate deadlocked on their turn. */}
       {isPkSpeaker && (
         <SpeechComposer
-          label="🎤 PK发言"
+          label="PK发言"
+          icon={Mic}
           wrapperClassName="speech wide-group flex-col items-stretch max-w-[600px] w-full"
           inputGroupClassName="wide w-full flex"
           value={speech}
@@ -279,10 +289,10 @@ export function PhaseActions({
 
       {isAlive && phase === 'SHERIFF_ELECTION' && (
         <div className="action-group sheriff">
-          <span className="action-label">👮 警长竞选</span>
+          <span className="action-label"><Award className="w-4 h-4" strokeWidth={1.5} />警长竞选</span>
           <div className="input-group">
             <button onClick={() => runSimple('run_for_sheriff')} className="btn btn-gold btn-glow">
-              <span className="btn-icon">⭐</span>上警
+              <Star className="w-4 h-4" strokeWidth={1.5} />上警
             </button>
             <button onClick={() => runSimple('pass')} className="btn btn-secondary">不竞选</button>
           </div>
@@ -291,7 +301,8 @@ export function PhaseActions({
 
       {isAlive && phase === 'SHERIFF_SPEECH' && isCandidate && (
         <SpeechComposer
-          label="🎤 竞选发言"
+          label="竞选发言"
+          icon={Mic}
           wrapperClassName="sheriff-speech wide-group flex-col w-full max-w-[500px]"
           labelClassName="mb-2 block"
           inputGroupClassName="wide w-full flex"
@@ -303,7 +314,7 @@ export function PhaseActions({
             <>
               <button onClick={() => runSimple('withdraw')} className="btn btn-danger">退水</button>
               {isWolf && (
-                <button onClick={() => runSimple('self_explode')} className="btn btn-explode">💥 自爆</button>
+                <button onClick={() => runSimple('self_explode')} className="btn btn-explode"><Bomb className="w-4 h-4" strokeWidth={1.5} />自爆</button>
               )}
             </>
           }
@@ -312,7 +323,7 @@ export function PhaseActions({
 
       {isAlive && showVoteOpener && (
         <div className="action-group vote">
-          <span className="action-label">🗳️ 投票</span>
+          <span className="action-label"><Vote className="w-4 h-4" strokeWidth={1.5} />投票</span>
           <div className="input-group">
             <button onClick={onOpenVoteModal} className="btn btn-primary">打开投票面板</button>
           </div>
@@ -323,7 +334,7 @@ export function PhaseActions({
           dying sheriff is exactly who operates it. */}
       {isSheriffTransfer && (
         <div className="action-group sheriff">
-          <span className="action-label">👮 移交警徽</span>
+          <span className="action-label"><Award className="w-4 h-4" strokeWidth={1.5} />移交警徽</span>
           <div className="input-group">
             <input
               type="number" min={1} max={12} placeholder="目标ID"
@@ -339,8 +350,8 @@ export function PhaseActions({
       )}
 
       {!isAlive && !deadActionActive && (
-        <div className="dead-message flex items-center gap-2 text-white/50 bg-black/30 px-6 py-3 rounded-full border border-white/5">
-          <span className="text-xl">👻</span>
+        <div className="dead-message flex items-center gap-2 text-parchment-dim bg-black/30 px-6 py-3 rounded-full border border-white/5">
+          <Ghost className="w-5 h-5" strokeWidth={1.5} />
           <span>你已死亡，正在观战...</span>
         </div>
       )}

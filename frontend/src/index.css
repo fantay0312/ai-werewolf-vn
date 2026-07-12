@@ -17,28 +17,53 @@
   --color-human: #38bdf8; /* the human player's "you" accent (sky) */
   --color-wolf: #dc2626;
   --color-good: #10b981;
+
+  /* Parchment text ramp — replaces blanket text-white. Near-white is reserved
+     for numbers that must pop; body reading text is warm parchment. */
+  --color-parchment: #ece1c8;      /* primary reading text */
+  --color-parchment-dim: #b8ac92;  /* secondary text / labels */
+
+  /* Ink surfaces for the candlelit-tabletop panels & buttons (de-AI: no purple
+     glass). Deep warm-black card stock with gilded edges. */
+  --color-ink: #141210;
+  --color-ink-raised: #1c1913;
+
+  /* Serif display stack — LOCAL fonts only, never downloaded. Exposed as the
+     Tailwind `font-display` utility for phase names / titles / judge banner. */
+  --font-display: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "STSong", serif;
 }
 
 :root {
   /* Seat glow ring (overridden inline per-seat in PlayerSeat via --ring-color). */
   --ring-color: rgba(255, 255, 255, 0.15);
 
-  /* Reusable glows, so the same shadow value isn't re-typed per rule. */
-  --glow-purple: 0 0 20px rgba(168, 85, 247, 0.5);
+  /* Reusable glows/borders/shadows — one recipe, re-used instead of re-typed.
+     The de-AI system: gilded hairline borders + a single warm gold glow that
+     only fires on hover/active, plus one soft-black ambient shadow. */
   --glow-gold: 0 0 10px rgba(197, 160, 89, 0.6);
+  --glow-warm: 0 0 16px rgba(197, 160, 89, 0.32);
+  --glow-warm-inset: inset 0 0 14px rgba(197, 160, 89, 0.12);
+  --border-gilded: rgba(197, 160, 89, 0.35);
+  --border-gilded-strong: rgba(197, 160, 89, 0.55);
+  --shadow-ambient: 0 8px 24px rgba(0, 0, 0, 0.45);
 
-  /* Z-index scale. In-table tiers used directly below; the overlay tiers mirror
-     the arbitrary z-[..] used by TSX overlays so the stacking order is
-     documented in one place: dialog(45) < overlay(40)? see note.
-     Effective paint order: seat < hint < overlay < dialog < modal < top. */
+  /* Radius scale: 4px inputs/buttons, 10px panels/cards, 999 only for seat
+     circles + count badges. */
+  --radius-input: 4px;
+  --radius-panel: 10px;
+
+  /* Z-index scale — paint order applied across the app:
+     background < seats < seat bubbles < hint < judge < overlay < dialog <
+     discussion feed < action row < modal < top. */
   --z-decor: 1;
   --z-center-slot: 5;
   --z-seat: 10;
   --z-seat-hover: 20;
+  --z-seat-bubble: 24; /* current-speaker seat bubble: above sibling seats */
   --z-hint: 30;
   --z-overlay: 40;   /* loading overlay (TSX z-40) */
   --z-dialog: 45;    /* DialogBox (TSX z-[45]) */
-  --z-modal: 50;     /* vote / wolf / winner modals (TSX z-50) */
+  --z-modal: 50;     /* vote / winner modals (TSX z-50) */
   --z-top: 100;      /* night overlay + role card (TSX z-[100]) */
 }
 
@@ -63,7 +88,11 @@
 
   /* 链接样式 */
   a {
-    @apply text-purple-500 hover:text-purple-400 transition-colors;
+    @apply transition-colors;
+    color: var(--color-gold);
+  }
+  a:hover {
+    color: var(--color-gold-bright);
   }
 
   /* 按钮基础样式 */
@@ -81,34 +110,67 @@
   }
 
   input:focus, textarea:focus {
-    @apply ring-2 ring-purple-500;
+    box-shadow: 0 0 0 1px var(--border-gilded-strong);
   }
 }
 
 /* ====== 组件样式 ====== */
 @layer components {
-  /* 主按钮 */
+  /* Candle-gold ink button system. One recipe: dark ink base, 1px gilded
+     hairline, parchment/gold text, radius 4px. A warm gold glow only appears on
+     hover/active — never a resting neon. Camp variants tint border + text only. */
+
+  /* 主按钮 — primary confirm (准备就绪 / 打开投票面板): strongest gilding. */
   .btn-primary {
-    @apply px-6 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg font-bold text-white transition-all duration-200;
-    @apply hover:shadow-lg hover:shadow-purple-500/30 active:scale-95;
+    @apply px-6 py-2 font-bold transition-all duration-200 active:scale-95;
+    border-radius: var(--radius-input);
+    background: var(--color-ink-raised);
+    border: 1px solid var(--border-gilded-strong);
+    color: var(--color-gold-bright);
+  }
+  .btn-primary:hover {
+    background: #241d10;
+    box-shadow: var(--glow-warm), var(--glow-warm-inset);
   }
 
-  /* 危险按钮 */
+  /* 危险按钮 — kill / poison-adjacent / withdraw: muted blood-red border. */
   .btn-danger {
-    @apply px-6 py-2 bg-red-600 hover:bg-red-500 rounded-lg font-bold text-white transition-all duration-200;
-    @apply hover:shadow-lg hover:shadow-red-500/30 active:scale-95;
+    @apply px-6 py-2 font-bold transition-all duration-200 active:scale-95;
+    border-radius: var(--radius-input);
+    background: var(--color-ink-raised);
+    border: 1px solid rgba(220, 38, 38, 0.5);
+    color: #f2a6a6;
+  }
+  .btn-danger:hover {
+    background: #241213;
+    box-shadow: 0 0 16px rgba(220, 38, 38, 0.28), inset 0 0 14px rgba(220, 38, 38, 0.12);
   }
 
-  /* 次要按钮 */
+  /* 次要按钮 — pass / end / cancel: faintest gilding, dim parchment. */
   .btn-secondary {
-    @apply px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium text-white transition-all duration-200;
-    @apply hover:shadow-lg active:scale-95;
+    @apply px-6 py-2 font-medium transition-all duration-200 active:scale-95;
+    border-radius: var(--radius-input);
+    background: rgba(28, 25, 19, 0.7);
+    border: 1px solid rgba(197, 160, 89, 0.18);
+    color: var(--color-parchment-dim);
+  }
+  .btn-secondary:hover {
+    background: var(--color-ink-raised);
+    border-color: var(--border-gilded);
+    color: var(--color-parchment);
   }
 
-  /* 成功按钮 */
+  /* 成功按钮 — antidote / affirm: muted green border. */
   .btn-success {
-    @apply px-6 py-2 bg-green-600 hover:bg-green-500 rounded-lg font-bold text-white transition-all duration-200;
-    @apply hover:shadow-lg hover:shadow-green-500/30 active:scale-95;
+    @apply px-6 py-2 font-bold transition-all duration-200 active:scale-95;
+    border-radius: var(--radius-input);
+    background: var(--color-ink-raised);
+    border: 1px solid rgba(16, 185, 129, 0.45);
+    color: #7fe0b6;
+  }
+  .btn-success:hover {
+    background: #10221a;
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.25), inset 0 0 14px rgba(16, 185, 129, 0.1);
   }
 
   /* 角色标签 (used in PlayerSeat seat badge) */
@@ -116,11 +178,21 @@
     @apply px-2 py-0.5 rounded-full text-xs font-bold;
   }
 
-  /* 输入框 */
+  /* 输入框 — ink field with gilded hairline, gold focus. */
   .input-field {
-    @apply w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg;
-    @apply text-white placeholder-gray-400;
-    @apply focus:border-purple-600 focus:ring-2 focus:ring-purple-600/50;
+    @apply w-full px-4 py-2;
+    border-radius: var(--radius-input);
+    background: rgba(10, 9, 7, 0.7);
+    border: 1px solid rgba(197, 160, 89, 0.22);
+    color: var(--color-parchment);
+  }
+  .input-field::placeholder {
+    color: var(--color-parchment-dim);
+    opacity: 0.7;
+  }
+  .input-field:focus {
+    border-color: var(--border-gilded-strong);
+    box-shadow: 0 0 0 1px var(--border-gilded);
   }
 }
 
@@ -194,7 +266,8 @@
 
 /* ====== 选择样式 ====== */
 ::selection {
-  @apply bg-purple-600/50 text-white;
+  background: rgba(197, 160, 89, 0.35);
+  color: var(--color-parchment);
 }
 
 /* 警长标识 */
@@ -399,6 +472,65 @@
   100% { transform: scale(1.6); opacity: 0; }
 }
 
+/* ====== Seat speech bubble ======
+   A SHORT excerpt of the current speaker's line, anchored above their seat.
+   Hard-capped to ~220px + 2 lines so it can never span the board or cover a
+   neighbouring seat's badge; the full text always lives in the DiscussionDialog
+   feed. Edge seats anchor the bubble inward (start/end) so it stays on-board. */
+.player-seat-container.has-bubble { z-index: var(--z-seat-bubble); }
+
+.seat-bubble {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  z-index: 1;
+  max-width: 220px;
+  width: max-content;
+  padding: 6px 10px;
+  border-radius: var(--radius-panel);
+  background: rgba(20, 18, 16, 0.94);
+  border: 1px solid var(--border-gilded);
+  color: var(--color-parchment);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  letter-spacing: 0.2px;
+  box-shadow: var(--shadow-ambient);
+  pointer-events: none;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.seat-bubble.wolf-bubble {
+  border-color: rgba(220, 38, 38, 0.5);
+  background: rgba(30, 16, 16, 0.94);
+  color: #f2d9d9;
+}
+
+.seat-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  margin-top: -4px;
+  width: 8px;
+  height: 8px;
+  background: inherit;
+  border-right: 1px solid var(--border-gilded);
+  border-bottom: 1px solid var(--border-gilded);
+  transform: rotate(45deg);
+}
+.seat-bubble.wolf-bubble::after {
+  border-color: rgba(220, 38, 38, 0.5);
+}
+
+.seat-bubble.align-center { left: 50%; transform: translateX(-50%); }
+.seat-bubble.align-center::after { left: calc(50% - 4px); }
+.seat-bubble.align-start { left: 50%; transform: translateX(-30px); }
+.seat-bubble.align-start::after { left: 26px; }
+.seat-bubble.align-end { left: 50%; transform: translateX(calc(-100% + 30px)); }
+.seat-bubble.align-end::after { right: 26px; }
+
 /* Role/camp badges on player seats */
 .role-wolf {
   background: linear-gradient(135deg, rgba(220, 38, 38, 0.85), rgba(159, 18, 57, 0.85));
@@ -418,7 +550,7 @@
 
 .indicator-vote { background: rgba(59, 130, 246, 0.9); color: white; }
 .indicator-kill { background: rgba(244, 63, 94, 0.9); color: white; }
-.indicator-check { background: rgba(217, 70, 239, 0.9); color: white; }
+.indicator-check { background: rgba(197, 160, 89, 0.95); color: #141210; }
 .indicator-protect { background: rgba(6, 182, 212, 0.9); color: white; }
 .indicator-poison { background: rgba(225, 29, 72, 0.9); color: white; }
 .indicator-save { background: rgba(16, 185, 129, 0.9); color: white; }
@@ -449,15 +581,17 @@
 
 /* Phase title / day info */
 .phase-title {
-  font-size: 1.2rem;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.9);
-  letter-spacing: 1px;
+  color: var(--color-parchment);
+  letter-spacing: 2px;
 }
 
 .day-info {
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--color-parchment-dim);
+  letter-spacing: 1px;
 }
 
 /* Tab buttons */
@@ -586,9 +720,9 @@
 .log-item.log-system,
 .log-item.log-broadcast,
 .log-item.log-judge { border-left-color: rgba(251, 191, 36, 0.5); }
-.log-item.log-skill { border-left-color: rgba(168, 85, 247, 0.6); }
+.log-item.log-skill { border-left-color: rgba(180, 130, 70, 0.6); }
 .log-item.log-normal { border-left-color: rgba(255,255,255,0.1); }
-.log-item.log-action { border-left-color: rgba(99, 102, 241, 0.5); }
+.log-item.log-action { border-left-color: rgba(148, 163, 184, 0.4); }
 
 /* Log avatars */
 .log-avatar {
@@ -657,49 +791,65 @@
   align-items: center;
   gap: 6px;
   padding: 8px 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-input);
   font-weight: 600;
   font-size: 0.9rem;
-  transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.2s, border-color 0.2s;
   white-space: nowrap;
 }
 
+/* Ink + gilded variants. Each is the same ink card stock with a tinted hairline
+   and text; a warm glow of the matching hue only on hover. */
 .btn-gold {
-  background: linear-gradient(135deg, var(--color-gold-deep), var(--color-gold-deeper));
+  background: var(--color-ink-raised);
   color: var(--color-gold-bright);
-  border: 1px solid rgba(252, 211, 77, 0.3);
+  border: 1px solid var(--border-gilded-strong);
 }
-.btn-gold:hover { background: linear-gradient(135deg, #a16207, var(--color-gold-deep)); }
+.btn-gold:hover {
+  background: #241d10;
+  box-shadow: var(--glow-warm), var(--glow-warm-inset);
+}
 
+/* seer / mystic action — cool-parchment on ink, no violet. */
 .btn-purple {
-  background: linear-gradient(135deg, #6d28d9, #5b21b6);
-  color: white;
+  background: var(--color-ink-raised);
+  color: #cdb9e6;
+  border: 1px solid rgba(129, 140, 248, 0.4);
 }
-.btn-purple:hover { background: linear-gradient(135deg, #7c3aed, #6d28d9); }
+.btn-purple:hover {
+  background: #1a1826;
+  box-shadow: 0 0 16px rgba(129, 140, 248, 0.22), inset 0 0 14px rgba(129, 140, 248, 0.1);
+}
 
 .btn-poison {
-  background: linear-gradient(135deg, #065f46, #064e3b);
+  background: var(--color-ink-raised);
   color: #6ee7b7;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  border: 1px solid rgba(16, 185, 129, 0.4);
 }
-.btn-poison:hover { background: linear-gradient(135deg, #047857, #065f46); }
+.btn-poison:hover {
+  background: #10221a;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.22), inset 0 0 14px rgba(16, 185, 129, 0.1);
+}
 
 .btn-explode {
-  background: linear-gradient(135deg, #9a3412, #7c2d12);
+  background: var(--color-ink-raised);
   color: #fdba74;
-  border: 1px solid rgba(249, 115, 22, 0.3);
+  border: 1px solid rgba(249, 115, 22, 0.4);
 }
-.btn-explode:hover { background: linear-gradient(135deg, #c2410c, #9a3412); }
+.btn-explode:hover {
+  background: #241811;
+  box-shadow: 0 0 16px rgba(249, 115, 22, 0.24), inset 0 0 14px rgba(249, 115, 22, 0.1);
+}
 
-.btn-glow {
-  box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
-}
+/* Warm hover glow modifier (replaces the old purple neon). */
 .btn-glow:hover {
-  box-shadow: var(--glow-purple);
+  box-shadow: var(--glow-warm), var(--glow-warm-inset);
 }
 
 .btn-icon {
-  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .action-group {
@@ -714,8 +864,11 @@
 }
 
 .action-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--color-parchment-dim);
   font-weight: 600;
   white-space: nowrap;
 }

@@ -33,6 +33,34 @@ export function stripSpeakerPrefix(content: string, playerId?: number): string {
   return content.replace(new RegExp(`^${playerId}号[：:]\\s*`), '')
 }
 
+export interface ParsedSpeech {
+  /** e.g. "9号", or null when no speaker could be parsed. */
+  speaker: string | null
+  /** e.g. "竞选发言" from a "9号(竞选发言): ..." prefix, else null. */
+  tag: string | null
+  /** The speech body with the "N号(tag):" prefix removed. */
+  text: string
+}
+
+/**
+ * Defensive parser for a speech line. Handles the raw log/message shapes the
+ * backend emits — "9号: ...", "9号：...", "9号(竞选发言): ..." — and degrades
+ * gracefully to the whole line when the format is unexpected (never throws).
+ * Used to render a speaker chip + small tag instead of a raw text prefix.
+ */
+export function parseSpeechLine(content: string, playerId?: number): ParsedSpeech {
+  if (!content) return { speaker: playerId ? `${playerId}号` : null, tag: null, text: '' }
+  const match = content.match(/^\s*(\d+号)\s*(?:[（(]([^）)]*)[）)])?\s*[：:]\s*([\s\S]*)$/)
+  if (match) {
+    return { speaker: match[1], tag: match[2]?.trim() || null, text: match[3].trim() }
+  }
+  return {
+    speaker: playerId ? `${playerId}号` : null,
+    tag: null,
+    text: stripSpeakerPrefix(content, playerId),
+  }
+}
+
 /**
  * Derive the table's seat-click selection mode from the current phase and the
  * human's role/state. Vote phases return 'none' because VoteModal is the vote

@@ -1,19 +1,22 @@
 import { useState, type ReactNode } from 'react'
+import { Search, Target, ThumbsUp, ThumbsDown, Shield, Vote, AlertTriangle, Handshake, Zap, type LucideIcon } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 
-const QUICK_PHRASES = [
-  { icon: '🔍', label: '查验结果', text: '我查验了X号，是好人/狼人', type: 'seer' },
-  { icon: '🎯', label: '怀疑', text: '我怀疑X号是狼人', type: 'suspect' },
-  { icon: '✅', label: '认同', text: '我认同X号的发言', type: 'agree' },
-  { icon: '❌', label: '反对', text: '我不认同X号的观点', type: 'disagree' },
-  { icon: '🛡️', label: '自证', text: '我是好人，请相信我', type: 'defend' },
-  { icon: '🗳️', label: '投票', text: '我建议投X号', type: 'vote' },
-  { icon: '⚠️', label: '警告', text: '大家小心X号，他的逻辑有问题', type: 'warn' },
-  { icon: '🤝', label: '站边', text: '我选择相信X号', type: 'trust' },
+const QUICK_PHRASES: { Icon: LucideIcon; label: string; text: string; type: string }[] = [
+  { Icon: Search, label: '查验结果', text: '我查验了X号，是好人/狼人', type: 'seer' },
+  { Icon: Target, label: '怀疑', text: '我怀疑X号是狼人', type: 'suspect' },
+  { Icon: ThumbsUp, label: '认同', text: '我认同X号的发言', type: 'agree' },
+  { Icon: ThumbsDown, label: '反对', text: '我不认同X号的观点', type: 'disagree' },
+  { Icon: Shield, label: '自证', text: '我是好人，请相信我', type: 'defend' },
+  { Icon: Vote, label: '投票', text: '我建议投X号', type: 'vote' },
+  { Icon: AlertTriangle, label: '警告', text: '大家小心X号，他的逻辑有问题', type: 'warn' },
+  { Icon: Handshake, label: '站边', text: '我选择相信X号', type: 'trust' },
 ]
 
 interface SpeechComposerProps {
   label: string
+  /** Optional lucide glyph rendered before the label text. */
+  icon?: LucideIcon
   value: string
   onChange: (value: string) => void
   onSubmit: () => void
@@ -36,6 +39,7 @@ interface SpeechComposerProps {
  */
 export function SpeechComposer({
   label,
+  icon: Icon,
   value,
   onChange,
   onSubmit,
@@ -50,20 +54,28 @@ export function SpeechComposer({
 }: SpeechComposerProps) {
   const [showPhrases, setShowPhrases] = useState(false)
 
+  const labelNode = (
+    <span className={cn('action-label', labelClassName)}>
+      {Icon && <Icon className="w-4 h-4" strokeWidth={1.5} />}
+      {label}
+    </span>
+  )
+
   return (
     <div className={cn('action-group', wrapperClassName)}>
       {quickPhrases ? (
         <div className="speech-header flex justify-between items-center w-full mb-2">
-          <span className="action-label">{label}</span>
+          {labelNode}
           <button
             onClick={() => setShowPhrases(!showPhrases)}
-            className="btn-toggle-phrases px-3 py-1 text-xs bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded-full hover:bg-purple-500/30 transition-colors"
+            className="btn-toggle-phrases inline-flex items-center gap-1 px-3 py-1 text-xs bg-[#8b6914]/25 text-[#c5a059] border border-[#c5a059]/35 rounded-full hover:bg-[#8b6914]/40 transition-colors"
           >
-            {showPhrases ? '收起' : '快捷短语'} ⚡
+            <Zap className="w-3.5 h-3.5" strokeWidth={1.5} />
+            {showPhrases ? '收起' : '快捷短语'}
           </button>
         </div>
       ) : (
-        <span className={cn('action-label', labelClassName)}>{label}</span>
+        labelNode
       )}
 
       {quickPhrases && showPhrases && (
@@ -72,9 +84,10 @@ export function SpeechComposer({
             <button
               key={phrase.text}
               onClick={() => onChange(phrase.text)}
-              className={`phrase-btn px-3 py-1 text-xs bg-white/5 border border-white/10 rounded-full text-white/80 hover:bg-white/10 ${phrase.type}`}
+              className={`phrase-btn inline-flex items-center gap-1 px-3 py-1 text-xs bg-white/5 border border-[color:var(--border-gilded)] rounded-full text-parchment-dim hover:bg-white/10 hover:text-parchment transition-colors ${phrase.type}`}
             >
-              {phrase.icon} {phrase.label}
+              <phrase.Icon className="w-3.5 h-3.5" strokeWidth={1.5} />
+              {phrase.label}
             </button>
           ))}
         </div>

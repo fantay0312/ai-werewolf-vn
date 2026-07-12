@@ -70,7 +70,7 @@ export function NightActionAnimation() {
           </div>
         ))}
         <div className="progress-track absolute bottom-1.5 left-7 right-7 h-0.5 bg-white/5 rounded-full overflow-hidden">
-          <div className="progress-fill h-full bg-gradient-to-r from-indigo-500/60 to-purple-500/60 transition-all duration-800" style={{ width: `${progressPercent}%` }}></div>
+          <div className="progress-fill h-full bg-gradient-to-r from-[#8b6914]/70 to-[#c5a059]/70 transition-all duration-800" style={{ width: `${progressPercent}%` }}></div>
         </div>
       </div>
 

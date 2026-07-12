@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { TriangleAlert } from 'lucide-react'
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -42,10 +43,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950 p-6 text-center">
-        <div className="flex max-w-md flex-col items-center gap-4 rounded-2xl border border-white/10 bg-slate-900/80 p-8 shadow-2xl backdrop-blur-md">
-          <div className="text-5xl">💥</div>
-          <h1 className="text-xl font-bold text-white">页面出错了</h1>
-          <p className="text-sm leading-relaxed text-white/60">
+        <div className="flex max-w-md flex-col items-center gap-4 rounded-2xl border border-[color:var(--border-gilded)] bg-[#141210]/90 p-8 shadow-2xl backdrop-blur-md">
+          <TriangleAlert className="w-12 h-12 text-[#c5a059]" strokeWidth={1.5} />
+          <h1 className="font-display text-xl font-bold text-parchment tracking-wide">页面出错了</h1>
+          <p className="text-sm leading-relaxed text-parchment-dim">
             渲染时发生异常，游戏进度已保存。你可以重新加载页面，或返回首页。
           </p>
           {this.state.message && (

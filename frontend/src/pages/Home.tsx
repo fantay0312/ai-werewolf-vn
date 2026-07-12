@@ -63,7 +63,7 @@ function buildBrandSVG() {
   let svgContent = ''
   iconMatrix.forEach((row, y) => {
     row.forEach((v, x) => {
-      if (v) svgContent += `<rect x="${x*px}" y="${y*px}" width="${px}" height="${px}" fill="#FFF"/>`
+      if (v) svgContent += `<rect x="${x*px}" y="${y*px}" width="${px}" height="${px}" fill="#c5a059"/>`
     })
   })
 
@@ -334,18 +334,18 @@ export function Home() {
           
           <div className="flex flex-col items-center gap-7">
             <div className="transform scale-100 md:scale-150" dangerouslySetInnerHTML={buildBrandSVG()} />
-            <div className="text-[24px] text-[#666] tracking-[6px] font-sans">AI 狼人杀</div>
-            
+            <div className="font-display text-[24px] text-[#c5a059] tracking-[6px]">AI 狼人杀</div>
+
             <div className="flex flex-col gap-2 w-[180px]">
               <button
                 onClick={startGame}
                 disabled={isCreating}
                 aria-busy={isCreating}
-                className="font-['VT323',monospace] text-[16px] px-4 py-2 bg-transparent border border-[#555] text-white cursor-pointer transition-colors text-left tracking-[2px] hover:bg-white hover:text-black disabled:cursor-wait disabled:opacity-70 disabled:hover:bg-transparent disabled:hover:text-white"
+                className="font-['VT323',monospace] text-[16px] px-4 py-2 bg-transparent border border-[#c5a059]/60 text-[#c5a059] cursor-pointer transition-colors text-left tracking-[2px] hover:bg-[#c5a059] hover:text-black disabled:cursor-wait disabled:opacity-70 disabled:hover:bg-transparent disabled:hover:text-[#c5a059]"
               >
                 {isCreating ? (
                   <span className="inline-flex items-center gap-2">
-                    <span className="inline-block w-2 h-2 bg-white animate-[pulse_1s_ease-in-out_infinite]" />
+                    <span className="inline-block w-2 h-2 bg-[#c5a059] animate-[pulse_1s_ease-in-out_infinite]" />
                     CREATING...
                   </span>
                 ) : (
