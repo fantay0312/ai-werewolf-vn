@@ -50,7 +50,7 @@ export function DiscussionDialog({ messages, visible }: DiscussionDialogProps) {
       {isHidden && visible && messages.length > 0 && (
         <button
           onClick={toggleVisibility}
-          className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900/80 backdrop-blur-md border border-white/15 rounded-full px-5 py-3 text-sky-400 cursor-pointer flex items-center gap-2 shadow-[0_4px_20px_rgba(0,0,0,0.4),0_0_15px_rgba(56,189,248,0.2)] transition-all hover:bg-slate-900/95 hover:-translate-y-0.5 hover:shadow-[0_6px_25px_rgba(0,0,0,0.5),0_0_20px_rgba(56,189,248,0.4)] pointer-events-auto animate-slide-up-fade"
+          className="fixed bottom-36 left-1/2 -translate-x-1/2 z-50 bg-slate-900/80 backdrop-blur-md border border-white/15 rounded-full px-5 py-3 text-sky-400 cursor-pointer flex items-center gap-2 shadow-[0_4px_20px_rgba(0,0,0,0.4),0_0_15px_rgba(56,189,248,0.2)] transition-all hover:bg-slate-900/95 hover:-translate-y-0.5 hover:shadow-[0_6px_25px_rgba(0,0,0,0.5),0_0_20px_rgba(56,189,248,0.4)] pointer-events-auto animate-slide-up-fade"
           title="显示讨论"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -65,7 +65,9 @@ export function DiscussionDialog({ messages, visible }: DiscussionDialogProps) {
       )}
 
       {visible && messages.length > 0 && !isHidden && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] max-w-[800px] w-[calc(100%-40px)] pointer-events-auto animate-slide-up-fade">
+        // bottom-36 keeps the overlay clear of the h-32 ActionPanel — it must never
+        // cover the speech composer during discussion phases
+        <div className="fixed bottom-36 left-1/2 -translate-x-1/2 z-[60] max-w-[800px] w-[calc(100%-40px)] pointer-events-auto animate-slide-up-fade">
           <div className="bg-slate-900/65 backdrop-blur-xl rounded-[20px] border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.6),inset_0_0_30px_rgba(255,255,255,0.02)] overflow-hidden flex flex-col max-h-[400px]">
             
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/5">
