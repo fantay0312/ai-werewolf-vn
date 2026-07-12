@@ -86,6 +86,7 @@ export function Home() {
   const [apiKeySet, setApiKeySet] = useState(false)
   const [hasSavedSession, setHasSavedSession] = useState(false)
   const [startError, setStartError] = useState('')
+  const [isCreating, setIsCreating] = useState(false)
   const [simStatus, setSimStatus] = useState<ReactNode>('BOOTING...')
   const [simPhase, setSimPhase] = useState('0.0000')
 
@@ -108,13 +109,18 @@ export function Home() {
   }, [])
 
   const startGame = async () => {
+    // Guard against double-create: a second click while the first request is in
+    // flight would spin up a second game and orphan the first.
+    if (isCreating) return
     setStartError('')
+    setIsCreating(true)
     try {
       await createGame()
       navigate('/game')
     } catch {
       setStartError('[ERR] 无法连接后端服务，请确认服务已启动')
       setTimeout(() => { setStartError('') }, 4000)
+      setIsCreating(false)
     }
   }
 
@@ -331,22 +337,35 @@ export function Home() {
             <div className="text-[24px] text-[#666] tracking-[6px] font-sans">AI 狼人杀</div>
             
             <div className="flex flex-col gap-2 w-[180px]">
-              <button 
+              <button
                 onClick={startGame}
-                className="font-['VT323',monospace] text-[16px] px-4 py-2 bg-transparent border border-[#555] text-white cursor-pointer transition-all text-left tracking-[2px] hover:bg-white hover:text-black"
-                >&gt; START_GAME</button>
+                disabled={isCreating}
+                aria-busy={isCreating}
+                className="font-['VT323',monospace] text-[16px] px-4 py-2 bg-transparent border border-[#555] text-white cursor-pointer transition-colors text-left tracking-[2px] hover:bg-white hover:text-black disabled:cursor-wait disabled:opacity-70 disabled:hover:bg-transparent disabled:hover:text-white"
+              >
+                {isCreating ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 bg-white animate-[pulse_1s_ease-in-out_infinite]" />
+                    CREATING...
+                  </span>
+                ) : (
+                  <>&gt; START_GAME</>
+                )}
+              </button>
               {hasSavedSession && (
                 <button
                   onClick={continueGame}
-                  className="font-['VT323',monospace] text-[16px] px-4 py-2 bg-transparent border border-[#2d5f3b] text-[#8de0a6] cursor-pointer transition-all text-left tracking-[2px] hover:bg-[#8de0a6] hover:text-black"
+                  disabled={isCreating}
+                  className="font-['VT323',monospace] text-[16px] px-4 py-2 bg-transparent border border-[#2d5f3b] text-[#8de0a6] cursor-pointer transition-colors text-left tracking-[2px] hover:bg-[#8de0a6] hover:text-black disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[#8de0a6]"
                 >
                   &gt; CONTINUE_GAME
                 </button>
               )}
-              <button 
+              <button
                 onClick={() => setShowSettings(true)}
-                className="font-['VT323',monospace] text-[16px] px-4 py-2 bg-transparent border border-[#333] text-[#888] cursor-pointer transition-all text-left tracking-[2px] hover:bg-[#111] hover:border-[#555] hover:text-white"
-                >&gt; CONFIG</button>
+                disabled={isCreating}
+                className="font-['VT323',monospace] text-[16px] px-4 py-2 bg-transparent border border-[#333] text-[#888] cursor-pointer transition-colors text-left tracking-[2px] hover:bg-[#111] hover:border-[#555] hover:text-white disabled:opacity-50"
+              >&gt; CONFIG</button>
             </div>
             {startError ? (
               <div className="text-[13px] text-[#a00] tracking-[1px]">{startError}</div>

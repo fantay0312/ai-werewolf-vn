@@ -1,16 +1,45 @@
 @import "tailwindcss";
 
-/* ====== 根变量 ====== */
+/* ==========================================================================
+   DESIGN TOKENS — single source of truth for the VN palette, z-index tiers
+   and reusable glows. Tailwind v4 CSS-first: @theme tokens also emit
+   `var(--color-*)` on :root, which the raw component CSS below consumes.
+   ========================================================================== */
+@theme {
+  /* Brand gold ramp (the app's dominant accent). --color-gold is the canonical
+     #c5a059 — replacing the old dead/misleading #c9a84c root token. */
+  --color-gold: #c5a059;
+  --color-gold-bright: #fcd34d;
+  --color-gold-deep: #854d0e;
+  --color-gold-deeper: #713f12;
+
+  /* Semantic camp / player accents */
+  --color-human: #38bdf8; /* the human player's "you" accent (sky) */
+  --color-wolf: #dc2626;
+  --color-good: #10b981;
+}
+
 :root {
-  --bg-primary: #0a0812;
-  --bg-secondary: #141020;
-  --text-primary: #e8e6ec;
-  --text-secondary: #8b8a94;
-  --color-gold: #c9a84c;
-  --color-purple: #7c6aaf;
-  --color-red: #c44040;
-  --color-green: #3da35d;
-  --color-blue: #4a8cc7;
+  /* Seat glow ring (overridden inline per-seat in PlayerSeat via --ring-color). */
+  --ring-color: rgba(255, 255, 255, 0.15);
+
+  /* Reusable glows, so the same shadow value isn't re-typed per rule. */
+  --glow-purple: 0 0 20px rgba(168, 85, 247, 0.5);
+  --glow-gold: 0 0 10px rgba(197, 160, 89, 0.6);
+
+  /* Z-index scale. In-table tiers used directly below; the overlay tiers mirror
+     the arbitrary z-[..] used by TSX overlays so the stacking order is
+     documented in one place: dialog(45) < overlay(40)? see note.
+     Effective paint order: seat < hint < overlay < dialog < modal < top. */
+  --z-decor: 1;
+  --z-center-slot: 5;
+  --z-seat: 10;
+  --z-seat-hover: 20;
+  --z-hint: 30;
+  --z-overlay: 40;   /* loading overlay (TSX z-40) */
+  --z-dialog: 45;    /* DialogBox (TSX z-[45]) */
+  --z-modal: 50;     /* vote / wolf / winner modals (TSX z-50) */
+  --z-top: 100;      /* night overlay + role card (TSX z-[100]) */
 }
 
 /* ====== 基础样式重置 ====== */
@@ -39,7 +68,7 @@
 
   /* 按钮基础样式 */
   button {
-    @apply cursor-pointer outline-none transition-all duration-200;
+    @apply cursor-pointer outline-none transition-colors duration-200;
   }
 
   button:disabled {
@@ -48,7 +77,7 @@
 
   /* 输入框样式 */
   input, textarea {
-    @apply outline-none transition-all duration-200;
+    @apply outline-none transition-colors duration-200;
   }
 
   input:focus, textarea:focus {
@@ -82,52 +111,9 @@
     @apply hover:shadow-lg hover:shadow-green-500/30 active:scale-95;
   }
 
-  /* 警告按钮 */
-  .btn-warning {
-    @apply px-6 py-2 bg-yellow-600 hover:bg-yellow-500 rounded-lg font-bold text-white transition-all duration-200;
-    @apply hover:shadow-lg hover:shadow-yellow-500/30 active:scale-95;
-  }
-
-  /* 卡片样式 */
-  .card {
-    @apply bg-gray-800/80 rounded-lg p-4 border border-gray-700;
-    @apply transition-all duration-200;
-  }
-
-  .card-hover {
-    @apply hover:border-purple-600 hover:shadow-lg hover:shadow-purple-500/10;
-  }
-
-  /* 角色标签 (used in SidePanel etc.) */
+  /* 角色标签 (used in PlayerSeat seat badge) */
   .role-badge {
     @apply px-2 py-0.5 rounded-full text-xs font-bold;
-  }
-
-  /* 消息气泡 */
-  .speech-bubble {
-    @apply relative bg-gray-800 rounded-lg p-3 max-w-md;
-    @apply border border-gray-600;
-  }
-
-  .speech-bubble::before {
-    content: '';
-    @apply absolute -left-2 top-4 w-0 h-0;
-    border-top: 8px solid transparent;
-    border-bottom: 8px solid transparent;
-    border-right: 8px solid #4b5563;
-  }
-
-  /* 模态框遮罩 */
-  .modal-overlay {
-    @apply fixed inset-0 bg-black/70 z-40 flex items-center justify-center;
-    @apply backdrop-blur-sm;
-  }
-
-  /* 模态框容器 */
-  .modal-container {
-    @apply bg-gray-900 rounded-xl p-6 max-w-lg w-full mx-4;
-    @apply border border-gray-700 shadow-2xl;
-    animation: fadeInUp 0.3s ease-out forwards;
   }
 
   /* 输入框 */
@@ -135,31 +121,6 @@
     @apply w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg;
     @apply text-white placeholder-gray-400;
     @apply focus:border-purple-600 focus:ring-2 focus:ring-purple-600/50;
-  }
-
-  /* 徽章 */
-  .badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
-  }
-
-  .badge-gold {
-    @apply bg-yellow-600/30 text-yellow-400 border border-yellow-500/30;
-  }
-
-  .badge-red {
-    @apply bg-red-600/30 text-red-400 border border-red-500/30;
-  }
-
-  .badge-green {
-    @apply bg-green-600/30 text-green-400 border border-green-500/30;
-  }
-
-  .badge-blue {
-    @apply bg-blue-600/30 text-blue-400 border border-blue-500/30;
-  }
-
-  .badge-purple {
-    @apply bg-purple-600/30 text-purple-400 border border-purple-500/30;
   }
 }
 
@@ -184,110 +145,27 @@
   .animate-scale-in {
     animation: scaleIn 0.2s ease-out forwards;
   }
-
-  /* 抖动效果 */
-  .animate-shake {
-    animation: shake 0.5s ease-in-out;
-  }
-
-  /* 闪烁 */
-  .animate-blink {
-    animation: blink 1s infinite;
-  }
-
-  /* 呼吸效果 */
-  .animate-breathe {
-    animation: breathe 2s ease-in-out infinite;
-  }
-
-  /* 打字光标 */
-  .animate-cursor-blink {
-    animation: cursorBlink 0.7s infinite;
-  }
 }
 
 /* ====== 关键帧定义 ====== */
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes fadeInDown {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes shake {
-  0%, 100% {
-    transform: translateX(0);
-  }
-  10%, 30%, 50%, 70%, 90% {
-    transform: translateX(-5px);
-  }
-  20%, 40%, 60%, 80% {
-    transform: translateX(5px);
-  }
-}
-
-@keyframes blink {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-@keyframes breathe {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.8;
-  }
-  50% {
-    transform: scale(1.05);
-    opacity: 1;
-  }
-}
-
-@keyframes cursorBlink {
-  0%, 50% {
-    opacity: 1;
-  }
-  51%, 100% {
-    opacity: 0;
-  }
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* ====== 滚动条样式 ====== */
@@ -319,74 +197,6 @@
   @apply bg-purple-600/50 text-white;
 }
 
-/* ====== 游戏特定样式 ====== */
-/* 夜晚效果 */
-.night-mode {
-  @apply bg-gradient-to-b from-indigo-950 to-gray-900;
-}
-
-/* 白天效果 */
-.day-mode {
-  @apply bg-gradient-to-b from-yellow-900/20 to-gray-900;
-}
-
-/* 死亡效果 */
-.death-effect {
-  @apply relative;
-}
-
-.death-effect::after {
-  content: '';
-  @apply absolute inset-0 bg-red-900/50;
-  animation: deathFlash 0.5s ease-out;
-}
-
-@keyframes deathFlash {
-  0% {
-    opacity: 0;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-/* 胜利效果 */
-.victory-good {
-  @apply bg-gradient-to-r from-green-900/50 to-emerald-900/50;
-}
-
-.victory-wolf {
-  @apply bg-gradient-to-r from-red-900/50 to-rose-900/50;
-}
-
-/* 技能使用效果 */
-.skill-glow-purple {
-  @apply shadow-lg shadow-purple-500/50;
-  animation: skillGlow 1s ease-in-out infinite;
-}
-
-.skill-glow-green {
-  @apply shadow-lg shadow-green-500/50;
-  animation: skillGlow 1s ease-in-out infinite;
-}
-
-.skill-glow-red {
-  @apply shadow-lg shadow-red-500/50;
-  animation: skillGlow 1s ease-in-out infinite;
-}
-
-@keyframes skillGlow {
-  0%, 100% {
-    box-shadow: 0 0 6px currentColor;
-  }
-  50% {
-    box-shadow: 0 0 14px currentColor;
-  }
-}
-
 /* 警长标识 */
 .sheriff-badge {
   @apply absolute -top-1 -right-1 w-6 h-6 rounded-full;
@@ -396,38 +206,8 @@
 }
 
 @keyframes sheriffShine {
-  0%, 100% {
-    box-shadow: 0 0 4px rgba(201, 168, 76, 0.5);
-  }
-  50% {
-    box-shadow: 0 0 10px rgba(201, 168, 76, 0.6);
-  }
-}
-
-/* 投票进度条 */
-.vote-progress {
-  @apply h-2 bg-gray-700 rounded-full overflow-hidden;
-}
-
-.vote-progress-bar {
-  @apply h-full bg-purple-600 rounded-full transition-all duration-500;
-}
-
-/* ====== 响应式调整 ====== */
-@media (max-width: 768px) {
-  .player-seat {
-    @apply w-16 h-20;
-  }
-
-  .modal-container {
-    @apply mx-2 p-4;
-  }
-}
-
-@media (max-width: 640px) {
-  body {
-    font-size: 14px;
-  }
+  0%, 100% { box-shadow: 0 0 4px rgba(197, 160, 89, 0.5); }
+  50% { box-shadow: var(--glow-gold); }
 }
 
 /* ====================================================================
@@ -442,11 +222,36 @@
   overflow: visible;
 }
 
+/* Day / night atmosphere: two stacked gradient layers crossfaded via opacity
+   (compositor-friendly) so the board tint transitions in sync with GameRoom's
+   1s background-image crossfade instead of swapping instantly. */
+.game-table::before,
+.game-table::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 800ms ease;
+}
+.game-table::before {
+  /* day: from-yellow-900/20 to-gray-900 */
+  background: linear-gradient(to bottom, rgba(113, 63, 18, 0.2), #111827);
+}
+.game-table::after {
+  /* night: from-indigo-950 to-gray-900 */
+  background: linear-gradient(to bottom, #1e1b4b, #111827);
+}
+.game-table.day-mode::before { opacity: 1; }
+.game-table.night-mode::after { opacity: 1; }
+
 .radial-layout {
   position: relative;
   width: 100%;
   height: 100%;
   min-height: 400px;
+  z-index: 1; /* keep seats/decor above the day/night tint pseudos */
 }
 
 /* Center decorations */
@@ -460,7 +265,7 @@
   max-width: 380px;
   max-height: 380px;
   pointer-events: none;
-  z-index: 1;
+  z-index: var(--z-decor);
 }
 
 .center-ring {
@@ -480,12 +285,13 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 5;
+  z-index: var(--z-center-slot);
 }
 
-/* SVG ring animations */
-.outer-ring { animation: ringRotate 40s linear infinite; transform-origin: center; }
-.inner-ring { animation: ringRotate 25s linear infinite reverse; transform-origin: center; }
+/* SVG ring animations. will-change:transform on the two continuously-rotating
+   rings keeps them on the compositor (they animate for the whole game). */
+.outer-ring { animation: ringRotate 40s linear infinite; transform-origin: center; will-change: transform; }
+.inner-ring { animation: ringRotate 25s linear infinite reverse; transform-origin: center; will-change: transform; }
 .middle-ring { animation: ringPulse 4s ease-in-out infinite; transform-origin: center; }
 
 @keyframes ringRotate {
@@ -513,7 +319,7 @@
   bottom: 10px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 30;
+  z-index: var(--z-hint);
   pointer-events: none;
 }
 
@@ -529,8 +335,11 @@
 .player-seat-container {
   position: absolute;
   transform: translate(-50%, -50%);
-  z-index: 10;
-  transition: all 0.3s ease;
+  z-index: var(--z-seat);
+  /* Scope the transition to transform only: the seat's left/top are recomputed
+     when the radial layout changes, and `transition: all` would animate those
+     position jumps (layout thrash). */
+  transition: transform 0.3s ease;
 }
 
 .player-seat-container.can-select {
@@ -538,7 +347,7 @@
 }
 
 .player-seat-container.can-select:hover {
-  z-index: 20;
+  z-index: var(--z-seat-hover);
   transform: translate(-50%, -50%) scale(1.12);
 }
 
@@ -590,7 +399,7 @@
   100% { transform: scale(1.6); opacity: 0; }
 }
 
-/* Role badges on player seats */
+/* Role/camp badges on player seats */
 .role-wolf {
   background: linear-gradient(135deg, rgba(220, 38, 38, 0.85), rgba(159, 18, 57, 0.85));
   border: 1px solid rgba(244, 63, 94, 0.5);
@@ -601,31 +410,7 @@
   border: 1px solid rgba(52, 211, 153, 0.5);
 }
 
-/* Markers */
-.markers-container {
-  position: absolute;
-  top: -6px;
-  left: -6px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  z-index: 40;
-}
-
-.player-marker {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  border: 1px solid rgba(255,255,255,0.2);
-  background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(4px);
-}
-
-/* Selection indicator positioning */
+/* Selection indicator (positioned; color driven by .indicator-<mode>) */
 .selection-indicator {
   top: -10px;
   right: -10px;
@@ -651,7 +436,7 @@
 .decor-gem {
   width: 8px;
   height: 8px;
-  background: linear-gradient(135deg, #c5a059, #8b6914);
+  background: linear-gradient(135deg, var(--color-gold), #8b6914);
   transform: rotate(45deg);
   border-radius: 2px;
   flex-shrink: 0;
@@ -688,7 +473,7 @@
   font-size: 0.75rem;
   border: none;
   border-bottom: 2px solid transparent;
-  transition: all 0.2s;
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
 }
 
 .tab-btn:hover {
@@ -697,9 +482,9 @@
 }
 
 .tab-btn.active {
-  color: #c5a059;
+  color: var(--color-gold);
   background: rgba(197, 160, 89, 0.1);
-  border-bottom-color: #c5a059;
+  border-bottom-color: var(--color-gold);
 }
 
 /* Player list items */
@@ -758,7 +543,7 @@
 }
 
 .player-badge.is-sheriff {
-  background: linear-gradient(135deg, #854d0e, #713f12);
+  background: linear-gradient(135deg, var(--color-gold-deep), var(--color-gold-deeper));
   border-color: rgba(252, 211, 77, 0.5);
 }
 
@@ -778,7 +563,7 @@
 /* You tag */
 .you-tag {
   font-size: 0.7rem;
-  color: #38bdf8;
+  color: var(--color-human);
   font-weight: bold;
 }
 
@@ -822,11 +607,7 @@
 .avatar-default { background: linear-gradient(135deg, #374151, #1f2937); }
 .avatar-me { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
 .avatar-dead { background: linear-gradient(135deg, #4b5563, #374151); opacity: 0.6; }
-.avatar-system { background: linear-gradient(135deg, #854d0e, #713f12); }
-.avatar-judge {
-  background: linear-gradient(135deg, #854d0e, #713f12);
-  border: 1.5px solid rgba(252, 211, 77, 0.5);
-}
+.avatar-system { background: linear-gradient(135deg, var(--color-gold-deep), var(--color-gold-deeper)); }
 
 /* ====== Dialog Box ====== */
 .badge-wolf {
@@ -849,39 +630,25 @@
   font-weight: 600;
 }
 
-.badge-sheriff {
-  background: rgba(251, 191, 36, 0.3);
-  color: #fcd34d;
-  border: 1px solid rgba(251, 191, 36, 0.4);
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 600;
-}
-
-.badge-id {
-  background: rgba(99, 102, 241, 0.2);
-  color: #a5b4fc;
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 600;
-}
-
 /* Typing dots */
 .typing-dot {
   display: inline-block;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #c5a059;
+  background: var(--color-gold);
   animation: typingBounce 1.2s infinite;
 }
 
 @keyframes typingBounce {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
   30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* Unread-count badge pulse (DiscussionDialog) */
+@keyframes pulse-badge {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.85; }
 }
 
 /* ====== Action Panel ====== */
@@ -893,16 +660,16 @@
   border-radius: 8px;
   font-weight: 600;
   font-size: 0.9rem;
-  transition: all 0.2s;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
   white-space: nowrap;
 }
 
 .btn-gold {
-  background: linear-gradient(135deg, #854d0e, #713f12);
-  color: #fcd34d;
+  background: linear-gradient(135deg, var(--color-gold-deep), var(--color-gold-deeper));
+  color: var(--color-gold-bright);
   border: 1px solid rgba(252, 211, 77, 0.3);
 }
-.btn-gold:hover { background: linear-gradient(135deg, #a16207, #854d0e); }
+.btn-gold:hover { background: linear-gradient(135deg, #a16207, var(--color-gold-deep)); }
 
 .btn-purple {
   background: linear-gradient(135deg, #6d28d9, #5b21b6);
@@ -928,7 +695,7 @@
   box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
 }
 .btn-glow:hover {
-  box-shadow: 0 0 20px rgba(168, 85, 247, 0.5);
+  box-shadow: var(--glow-purple);
 }
 
 .btn-icon {
@@ -990,10 +757,6 @@
 }
 
 /* ====== Slide / Transition Animations ====== */
-.animate-slide-up {
-  animation: slideUp 0.4s ease-out forwards;
-}
-
 .animate-slide-up-fade {
   animation: slideUpFade 0.4s ease-out forwards;
 }
@@ -1002,9 +765,9 @@
   animation: slideIn 0.3s ease-out forwards;
 }
 
-@keyframes slideUp {
-  from { transform: translateY(20px); }
-  to { transform: translateY(0); }
+/* SettingsModal entrance */
+.animate-slide-in-up {
+  animation: slideInUp 0.35s ease-out forwards;
 }
 
 @keyframes slideUpFade {
@@ -1017,22 +780,38 @@
   to { opacity: 1; transform: translateX(0); }
 }
 
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* ====== Responsive ====== */
 @media (max-width: 768px) {
   .player-seat-container .player-seat {
     width: 3.5rem;
     height: 3.5rem;
   }
-
-  .side-panel {
-    width: 240px;
-    min-width: 240px;
-  }
 }
 
 @media (max-width: 640px) {
+  body {
+    font-size: 14px;
+  }
+
   .player-seat-container .player-seat {
     width: 3rem;
     height: 3rem;
+  }
+}
+
+/* ====== Reduced motion: honor the user's OS preference ====== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

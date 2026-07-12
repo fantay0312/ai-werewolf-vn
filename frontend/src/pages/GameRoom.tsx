@@ -314,7 +314,7 @@ export function GameRoom() {
       />
       {/* Dark overlay for UI readability */}
       <div className={cn(
-        "absolute inset-0 z-0 transition-all duration-1000",
+        "absolute inset-0 z-0 transition-colors duration-1000",
         isNight ? "bg-black/45" : "bg-black/30"
       )} />
       {/* Vignette effect */}

@@ -106,7 +106,7 @@ export function SidePanel({ onOpenWolfModal }: SidePanelProps) {
   ]
 
   return (
-    <div className="side-panel w-[300px] min-w-[300px] h-full flex flex-col bg-slate-900/55 backdrop-blur-xl border-l border-white/10 shadow-[-8px_0_30px_rgba(0,0,0,0.5)]">
+    <div className="side-panel w-[300px] min-w-[300px] max-lg:w-[260px] max-lg:min-w-[260px] max-sm:w-[220px] max-sm:min-w-[220px] h-full flex flex-col bg-slate-900/55 backdrop-blur-xl border-l border-white/10 shadow-[-8px_0_30px_rgba(0,0,0,0.5)]">
       
       <div className="panel-header-decor flex items-center justify-center py-2 px-4 gap-2">
         <div className="decor-line"></div>
