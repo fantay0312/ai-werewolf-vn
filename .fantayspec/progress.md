@@ -22,12 +22,10 @@
 - ✅ 端到端冒烟: 无 LLM 全 fallback 跑通 建局→竞选→首夜→遗言→讨论;
   SSE 票据一次性验证; 状态响应零泄露
 
-## 进行中
+## 已收尾 (2026-07-13)
 
-- 🔧 前端 Chunk 3 (Opus): index.css 千行清理、日/夜主题、1280px 响应式、Home 打磨
-
-## 待办
-
-- 终审: 全量验证 + /code-review + Codex 独立审查门 → 修复
-- 浏览器可视化检查 (后端 8010 冒烟服务器仍在跑, 托管 dist)
-- push + PR
+- ✅ 前端 Chunk 3: index.css 1038→817, 设计 token, 日/夜交叉淡入, reduced-motion, Home 防双击
+- ✅ 双模型终审: /code-review (35 agent) + Codex 审查门 → 25 条实锤 (含 3 处真人死锁、
+  立绘 URL 泄露身份、死亡技能晚于胜负判定、SSE 心跳误判) → 全部修复, 零误报
+- ✅ 终态: 后端 188 tests 全绿, 前端 build+lint 0/0, 浏览器实测通过
+- ✅ 推送: refactor/deep-refactor → GitHub, PR #2 (https://github.com/fantay0312/ai-werewolf-vn/pull/2)
