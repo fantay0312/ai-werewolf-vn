@@ -4,7 +4,9 @@ from collections import defaultdict
 from collections.abc import Callable
 from typing import Any
 
+from app.config import get_server_config
 from app.domain.events.base import DomainEvent, VisibilityScope
+from app.infrastructure.runtime_metrics import runtime_metrics
 from app.models.events import GameEvent
 
 logger = logging.getLogger(__name__)
@@ -16,14 +18,17 @@ EventEnvelope = GameEvent | DomainEvent
 class EventManager:
     """管理内部订阅和按局、按视角隔离的 SSE 队列。"""
 
-    def __init__(self):
+    def __init__(self, queue_capacity: int | None = None):
         self._subscribers: dict[str, list[Callable[..., Any]]] = {}
         self._sse_queues: dict[SessionViewerKey, set[asyncio.Queue[EventEnvelope]]] = defaultdict(set)
+        self._queue_capacity = queue_capacity
+        self._dropped_events = 0
 
     def reset(self) -> None:
         """测试辅助：清空所有订阅和 SSE 队列。"""
         self._subscribers.clear()
         self._sse_queues.clear()
+        self._dropped_events = 0
 
     def subscribe(self, event_type: str, callback: Callable[..., Any]) -> None:
         """订阅事件。"""
@@ -54,7 +59,7 @@ class EventManager:
         )
 
         for queue in target_queues:
-            await queue.put(event)
+            self._put_with_backpressure(queue, event, resolved_session_id)
 
     async def push_to_player(
         self,
@@ -78,9 +83,35 @@ class EventManager:
 
     async def create_sse_queue(self, session_id: str, viewer_id: int = 0) -> asyncio.Queue[EventEnvelope]:
         """为某局、某视角创建独立 SSE 队列。"""
-        queue: asyncio.Queue[EventEnvelope] = asyncio.Queue()
+        configured_capacity = (
+            self._queue_capacity
+            if self._queue_capacity is not None
+            else get_server_config().sse_queue_capacity
+        )
+        queue: asyncio.Queue[EventEnvelope] = asyncio.Queue(maxsize=max(1, configured_capacity))
         self._sse_queues[(session_id, viewer_id)].add(queue)
         return queue
+
+    def _put_with_backpressure(
+        self,
+        queue: asyncio.Queue[EventEnvelope],
+        event: EventEnvelope,
+        session_id: str,
+    ) -> None:
+        if queue.full():
+            queue.get_nowait()
+            self._dropped_events += 1
+            runtime_metrics.record_business_counter(
+                "sse_events_dropped_total",
+                labels={"reason": "queue_full"},
+                help_text="Total SSE events dropped by backpressure policy",
+            )
+            logger.warning(
+                "Dropped oldest SSE event for session %s; total_dropped=%s",
+                session_id,
+                self._dropped_events,
+            )
+        queue.put_nowait(event)
 
     def remove_sse_queue(
         self,

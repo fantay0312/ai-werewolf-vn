@@ -116,14 +116,14 @@ def test_day_start_emits_structured_summary_and_acknowledgement():
     assert start_log.data["is_peaceful_night"] is True
     assert start_log.data["dead_player_ids"] == []
     assert start_log.data["winner"] is None
-    assert start_log.data["next_phase_hint"] == GamePhase.SHERIFF_ELECTION.value
+    assert start_log.data["next_phase_hint"] == GamePhase.DAY_DISCUSS.value
 
     assert handler.process_action(ActionRequest(player_id=1, type=ActionType.CONFIRM)) is True
     ack_log = _find_event_log(game.game_logs, "day_start_acknowledged")
     assert ack_log.data["action"] == ActionType.CONFIRM.value
     assert ack_log.data["player_id"] == 1
     assert ack_log.data["advance_condition"] == "any_confirm"
-    assert ack_log.data["next_phase_hint"] == GamePhase.SHERIFF_ELECTION.value
+    assert ack_log.data["next_phase_hint"] == GamePhase.DAY_DISCUSS.value
 
 
 def test_sheriff_election_emits_structured_start_actions_and_close():

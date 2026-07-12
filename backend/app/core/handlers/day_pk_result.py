@@ -71,6 +71,7 @@ class DayPKResultHandler(PhaseHandler):
                 player.is_alive = False
                 player.death_cause = DeathCause.VOTE_EXILE
                 self.game.dead_players = [self.banished_id]
+                self.evaluate_win_condition()
                 self.add_log(
                     f"PK结果：{self.banished_id}号玩家以{max_votes}票被放逐。",
                     data=self.build_event_data(
@@ -144,6 +145,9 @@ class DayPKResultHandler(PhaseHandler):
         return False
 
     def try_advance(self) -> Optional[GamePhase]:
+        if self.game.winner:
+            return GamePhase.GAME_END
+
         if hasattr(self, 'banished_id') and self.banished_id:
             skill_phase = self.check_death_skills(self.banished_id, GamePhase.NIGHT_START)
             if skill_phase:

@@ -46,7 +46,7 @@ def test_day_last_words_emits_structured_window_and_turn_metadata():
     assert start_log.data["eligible_speaker_ids"] == [1, 2]
     assert start_log.data["speaking_order"] == [1, 2]
     assert start_log.data["current_speaker_id"] == 1
-    assert start_log.data["next_phase_hint"] == GamePhase.SHERIFF_ELECTION.value
+    assert start_log.data["next_phase_hint"] == GamePhase.DAY_DISCUSS.value
     assert game.players[0].has_acted is False
     assert game.players[1].has_acted is True
 
@@ -55,7 +55,7 @@ def test_day_last_words_emits_structured_window_and_turn_metadata():
     assert speech_log.data["speaker_id"] == 1
     assert speech_log.data["speaker_index"] == 0
     assert speech_log.data["next_speaker_id"] == 2
-    assert speech_log.data["next_phase_hint"] == GamePhase.SHERIFF_ELECTION.value
+    assert speech_log.data["next_phase_hint"] == GamePhase.DAY_DISCUSS.value
     assert game.current_speaker_index == 1
     assert game.players[1].has_acted is False
 
@@ -64,8 +64,8 @@ def test_day_last_words_emits_structured_window_and_turn_metadata():
     assert end_log.data["action"] == ActionType.PASS.value
     assert end_log.data["speaker_id"] == 2
     assert end_log.data["next_speaker_id"] is None
-    assert end_log.data["next_phase_hint"] == GamePhase.SHERIFF_ELECTION.value
-    assert handler.try_advance() == GamePhase.SHERIFF_ELECTION
+    assert end_log.data["next_phase_hint"] == GamePhase.DAY_DISCUSS.value
+    assert handler.try_advance() == GamePhase.DAY_DISCUSS
 
 
 def test_day_pk_speech_emits_structured_window_and_turn_metadata():

@@ -52,6 +52,11 @@ async def lifespan(app: FastAPI):
     restored_games = game_manager.restore_persisted_games()
     game_manager.run_maintenance()
     logger.info("Restored %s persisted games", restored_games)
+    for session_id in list(game_manager.games):
+        asyncio.create_task(
+            game_manager.trigger_ai_actions(session_id),
+            name=f"resume-game-ai-{session_id}",
+        )
     maintenance_task = asyncio.create_task(_maintenance_loop(), name="game-runtime-maintenance")
     app.state.maintenance_task = maintenance_task
     yield
