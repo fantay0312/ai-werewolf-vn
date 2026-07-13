@@ -4,6 +4,22 @@ import { useGameStore } from '../../store/useGameStore'
 import { PHASE_NAMES, type GameLog } from '../../types'
 import { cn } from '../../lib/utils'
 import { isNightPhase, stripSpeakerPrefix } from '../../lib/phases'
+import { usePhaseCountdown } from '../../hooks/usePhaseCountdown'
+
+// Phases that show a countdown ring. The actual budget comes from the server
+// snapshot (usePhaseCountdown), which is the authoritative per-phase limit.
+const TIMED_PHASES = new Set([
+  'NIGHT_WOLF_DISCUSS',
+  'NIGHT_WOLF_VOTE',
+  'NIGHT_SEER',
+  'NIGHT_WITCH',
+  'NIGHT_GUARD',
+  'DAY_DISCUSS',
+  'DAY_VOTE',
+  'SHERIFF_SPEECH',
+  'SHERIFF_VOTE',
+  'DAY_LAST_WORDS',
+])
 
 export function JudgeArea() {
   const broadcastContainerRef = useRef<HTMLDivElement>(null)
@@ -11,30 +27,15 @@ export function JudgeArea() {
   // Narrow subscriptions: only re-render when these slices change.
   const currentPhase = useGameStore(state => state.gameState?.phase || '')
   const currentDay = useGameStore(state => state.gameState?.day || 1)
-  const timeRemaining = useGameStore(state => state.gameState?.time_remaining)
   const gameLogs = useGameStore(state => state.gameState?.game_logs)
   const players = useGameStore(state => state.gameState?.players)
+  const { remaining: localTimeRemaining, budget: maxTime } = usePhaseCountdown()
 
-  const PHASE_TIME_LIMITS: Record<string, number> = {
-    NIGHT_WOLF_DISCUSS: 45,
-    NIGHT_WOLF_VOTE: 30,
-    NIGHT_SEER: 30,
-    NIGHT_WITCH: 30,
-    NIGHT_GUARD: 30,
-    DAY_DISCUSS: 60,
-    DAY_VOTE: 30,
-    SHERIFF_SPEECH: 60,
-    SHERIFF_VOTE: 30,
-    DAY_LAST_WORDS: 30
-  }
-
-  const showTimer = currentPhase in PHASE_TIME_LIMITS
+  const showTimer = TIMED_PHASES.has(currentPhase)
   const isNight = isNightPhase(currentPhase)
   const phaseText = PHASE_NAMES[currentPhase as keyof typeof PHASE_NAMES] || currentPhase
-  const maxTime = PHASE_TIME_LIMITS[currentPhase]
 
-  const localTimeRemaining = timeRemaining ?? (maxTime || 60)
-  const timerProgress = (localTimeRemaining / (maxTime || 60)) * 100
+  const timerProgress = Math.min(100, (localTimeRemaining / (maxTime || 60)) * 100)
   const timerColorClass = timerProgress > 60 ? 'text-green-400 stroke-green-400' : timerProgress > 30 ? 'text-yellow-400 stroke-yellow-400' : 'text-red-400 stroke-red-400 animate-pulse'
 
   // The judge banner carries judge/system broadcasts ONLY. Player speech lives in

@@ -121,6 +121,33 @@ def test_vote_details_appear_only_in_result_projection():
     assert PublicViewProjector().project(pk_game).pk_votes == pk_game.pk_votes
 
 
+def test_ai_pending_clears_once_every_ai_has_acted():
+    game = _sensitive_game(GamePhase.DAY_VOTE)
+    witch, hunter, villager = game.players
+    witch.is_human = True
+
+    assert PublicViewProjector().project(game).ai_pending is True
+    assert PrivateViewProjector().project(game, witch).ai_pending is True
+
+    hunter.has_acted = True
+    villager.has_acted = True
+    assert PublicViewProjector().project(game).ai_pending is False
+    assert PrivateViewProjector().project(game, witch).ai_pending is False
+
+
+def test_ai_pending_in_speech_phase_tracks_current_speaker():
+    game = _sensitive_game(GamePhase.DAY_DISCUSS)
+    witch, hunter, villager = game.players
+    witch.is_human = True
+    game.speaking_order = [witch.id, hunter.id, villager.id]
+
+    game.current_speaker_index = 0
+    assert PublicViewProjector().project(game).ai_pending is False
+
+    game.current_speaker_index = 1
+    assert PublicViewProjector().project(game).ai_pending is True
+
+
 def test_game_end_projection_fully_reveals_roles_and_skill_usage():
     game = _sensitive_game(GamePhase.GAME_END)
 

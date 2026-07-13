@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.core.pending_actors import has_pending_ai
 from app.models.api_models import GameLogView, GameStateView, PlayerView, WolfDiscussMessageView
 from app.models.game_state import GamePhase, GameState, Player, Role
 from app.application.projections.projection_policy import (
@@ -35,6 +36,7 @@ class PrivateViewProjector:
                 if can_view_log(game, log, viewer)
             ],
             time_remaining=game.time_remaining,
+            ai_pending=has_pending_ai(game),
             winner=game.winner,
             votes=visible_votes(game, viewer),
             pk_votes=visible_pk_votes(game, viewer),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.core.pending_actors import has_pending_ai
 from app.models.api_models import GameLogView, GameStateView, PlayerView
 from app.models.game_state import GameState
 from app.application.projections.projection_policy import (
@@ -50,6 +51,7 @@ class PublicViewProjector:
                 if can_view_log(game, log)
             ],
             time_remaining=game.time_remaining,
+            ai_pending=has_pending_ai(game),
             winner=game.winner,
             votes=visible_votes(game),
             pk_votes=visible_pk_votes(game),
