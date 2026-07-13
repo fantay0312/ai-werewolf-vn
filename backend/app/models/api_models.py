@@ -46,6 +46,9 @@ class GameStateView(BaseModel):
     players: List[PlayerView]
     game_logs: List[GameLogView] = []
     time_remaining: int = 60
+    # True while at least one AI still has to act in the current phase; clients
+    # hold the phase countdown until this clears.
+    ai_pending: bool = False
     winner: Optional[str] = None
     votes: dict[int, int] = {}
     pk_votes: dict[int, int] = {}

@@ -124,6 +124,8 @@ export interface GameState {
   players: Player[]
   game_logs: GameLog[]
   time_remaining: number
+  /** True while at least one AI still has to act in the current phase. */
+  ai_pending?: boolean
   winner: Winner | null
   votes: Record<number, number>
   pk_votes?: Record<number, number>

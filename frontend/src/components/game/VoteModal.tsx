@@ -12,6 +12,7 @@ interface VoteModalProps {
   onVote?: (targetId: number | null) => void
   voteType?: VoteType
   timeRemaining?: number
+  maxTime?: number
   voteRecords?: VoteRecord[]
 }
 
@@ -21,6 +22,7 @@ export function VoteModal({
   onVote,
   voteType = 'exile',
   timeRemaining = 60,
+  maxTime = 60,
   voteRecords = [],
 }: VoteModalProps) {
   const [selectedTarget, setSelectedTarget] = useState<number | null>(null)
@@ -59,7 +61,7 @@ export function VoteModal({
   const totalVoters = players?.filter(p => p.is_alive).length ?? 0
   const votedCount = players?.filter(p => p.is_alive && p.has_acted).length ?? 0
   const voteProgressPercent = totalVoters === 0 ? 0 : Math.round((votedCount / totalVoters) * 100)
-  const countdownProgress = Math.round((timeRemaining / 60) * 100)
+  const countdownProgress = Math.min(100, Math.round((timeRemaining / (maxTime || 60)) * 100))
 
   const countdownColorClass = timeRemaining <= 10 ? 'text-red-500' : timeRemaining <= 30 ? 'text-yellow-500' : 'text-green-500'
 

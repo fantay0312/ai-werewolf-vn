@@ -14,6 +14,7 @@ import { DiscussionDialog } from '../components/game/DiscussionDialog'
 import { GameOverOverlay } from '../components/game/GameOverOverlay'
 import { getSelectionMode, isNightActionPhase, isNightPhase, parseSpeechLine } from '../lib/phases'
 import { deriveTallyRecords, ownBallotRecords, type VoteKind } from '../lib/votes'
+import { usePhaseCountdown } from '../hooks/usePhaseCountdown'
 import type { GameLog, VoteRecord, WolfDiscussMessage } from '../types'
 
 const RECOVERY_TIMEOUT_MS = 12000
@@ -171,7 +172,7 @@ export function GameRoom() {
     return ownBallotRecords(ownVotes, myPlayer?.id, sheriffId)
   }, [currentPhase, gameLogs, gameState?.day, gameState?.pk_votes, gameState?.votes, myPlayer?.id, sheriffId])
 
-  const timeRemaining = gameState?.time_remaining || 60
+  const { remaining: timeRemaining, budget: phaseTimeBudget } = usePhaseCountdown()
 
   const isNight = isNightPhase(currentPhase)
 
@@ -350,6 +351,7 @@ export function GameRoom() {
         voteType={voteType}
         voteRecords={voteRecords}
         timeRemaining={timeRemaining}
+        maxTime={phaseTimeBudget}
         onVote={() => setShowVoteModal(false)}
         onClose={() => setShowVoteModal(false)}
       />
