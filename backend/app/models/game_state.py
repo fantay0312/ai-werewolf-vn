@@ -146,6 +146,7 @@ class GameState(BaseModel):
     # Skill Status
     last_guarded_player: Optional[int] = None  # For Guard rule
     next_phase_after_skill: Optional[GamePhase] = None  # Where to return after death skills
+    next_phase_after_last_words: Optional[GamePhase] = None  # Where exile last words return to
     wolf_discuss_round: int = 0
     wolf_discuss_messages: List[WolfDiscussMessage] = []
     wolf_revote_resolver_id: Optional[int] = None

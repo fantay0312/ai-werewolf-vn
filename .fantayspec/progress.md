@@ -29,3 +29,18 @@
   立绘 URL 泄露身份、死亡技能晚于胜负判定、SSE 心跳误判) → 全部修复, 零误报
 - ✅ 终态: 后端 188 tests 全绿, 前端 build+lint 0/0, 浏览器实测通过
 - ✅ 推送: refactor/deep-refactor → GitHub, PR #2 (https://github.com/fantay0312/ai-werewolf-vn/pull/2)
+
+## E2E 审计修复轮 (2026-08-31, fix/exile-lastwords-badge-wolfround)
+
+浏览器完整实测两局（村民局+狼人局）+ replay 领域事件审计，发现并修复 3 个后端 bug + 1 个前端 UX：
+
+- ✅ P0 `wolf_discuss_round` delattr 陷阱: night_wolf_discuss 用 delattr 删 pydantic 字段,
+  之后整局所有狼人 AI 决策构建上下文抛 AttributeError 跌落 fallback（真实 LLM 局狼人策略全废）。
+  改为归零重置 + NIGHT_START 统一清场。实测: 修复前一局 57 次错误 → 修复后 0
+- ✅ P1 死亡警长警徽卡死: _get_fallback_action 无 SHERIFF_TRANSFER 分支 → AI 警长 fallback
+  PASS 被拒 → force-skip 跳过但警徽留在尸体上, 之后每次死亡结算重复触发移交提示。
+  修复: fallback 撕警徽 (VOTE target 0) + try_advance 兜底收敛
+- ✅ P1 被放逐玩家无遗言: 放逐后直接入夜/技能。新增 next_phase_after_last_words 路由:
+  放逐 → DAY_LAST_WORDS → 死亡技能链 → 夜晚。浏览器实测两次放逐遗言正常
+- ✅ 前端警徽移交目标从裸数字输入框改为存活玩家下拉框
+- ✅ 终态: 后端 196 tests 全绿 (190→196), 前端 build+lint 0/0, 浏览器两局完整实测通过

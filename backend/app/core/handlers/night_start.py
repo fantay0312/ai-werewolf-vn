@@ -15,6 +15,7 @@ class NightStartHandler(PhaseHandler):
         self.game.wolf_kill_target = None
         self.game.votes = {}
         self.game.wolf_discuss_messages = []
+        self.game.wolf_discuss_round = 0
         for p in self.game.players:
             p.has_acted = False
             p.protected_by_guard = False
@@ -40,6 +41,7 @@ class NightStartHandler(PhaseHandler):
                     "wolf_kill_target",
                     "votes",
                     "wolf_discuss_messages",
+                    "wolf_discuss_round",
                     "has_acted",
                     "protected_by_guard",
                     "killed_by_wolf",

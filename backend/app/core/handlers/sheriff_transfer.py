@@ -87,6 +87,25 @@ class SheriffTransferHandler(PhaseHandler):
             return self._next_phase_after_win_check()
         if sheriff and not sheriff.has_acted:
             return None
+        if sheriff and not sheriff.is_alive:
+            # A force-skipped resolution (AI action and fallback both failed)
+            # would otherwise leave the badge on a corpse and re-open this
+            # phase after every later death. Converge to a torn badge.
+            self.game.sheriff_id = None
+            sheriff.is_sheriff = False
+            self.add_log(
+                f"{sheriff.id}号未移交警徽，警徽作废。",
+                player_id=sheriff.id,
+                log_type="action",
+                data=self.build_event_data(
+                    "sheriff_badge_torn",
+                    action="tear_badge",
+                    sheriff_id=sheriff.id,
+                    previous_sheriff_id=sheriff.id,
+                    next_sheriff_id=None,
+                    next_phase=self._get_next_phase().value,
+                ),
+            )
         return self._next_phase_after_win_check()
 
     def _next_phase_after_win_check(self) -> GamePhase:

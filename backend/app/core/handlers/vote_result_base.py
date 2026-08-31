@@ -63,8 +63,14 @@ class VoteResultHandler(PhaseHandler):
         if banished_id:
             skill_phase = self.check_death_skills(banished_id, GamePhase.NIGHT_START)
             if skill_phase:
+                # Exiled players give last words first, then death skills fire.
                 self.game.winner = None
-                return skill_phase
+                self.game.next_phase_after_last_words = skill_phase
+                return GamePhase.DAY_LAST_WORDS
+            if self.game.winner:
+                return GamePhase.GAME_END
+            self.game.next_phase_after_last_words = GamePhase.NIGHT_START
+            return GamePhase.DAY_LAST_WORDS
         if self.game.winner:
             return GamePhase.GAME_END
         return self._next_phase()

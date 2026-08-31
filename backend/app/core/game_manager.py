@@ -895,6 +895,11 @@ class GameManager:
             return ActionRequest(player_id=player.id, type=ActionType.VOTE, target_id=target_id)
         if game.phase == GamePhase.HUNTER_SKILL:
             return ActionRequest(player_id=player.id, type=ActionType.PASS)
+        if game.phase == GamePhase.SHERIFF_TRANSFER:
+            # PASS is rejected in this phase; tearing the badge (target 0) is the
+            # neutral legal resolution, otherwise the badge stays on the corpse
+            # and the transfer prompt re-fires after every later death.
+            return ActionRequest(player_id=player.id, type=ActionType.VOTE, target_id=0)
         return ActionRequest(player_id=player.id, type=ActionType.PASS)
 
     def _persist_game_snapshot(self, game: GameState) -> bool:

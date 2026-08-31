@@ -13,10 +13,10 @@ class NightWolfDiscussHandler(PhaseHandler):
         return GamePhase.NIGHT_WOLF_DISCUSS
 
     def on_enter(self):
-        if not hasattr(self.game, 'wolf_discuss_round'):
-            self.game.wolf_discuss_round = 1
-        else:
-            self.game.wolf_discuss_round += 1
+        # 0 means "no discussion in progress"; never delete the field — removing
+        # a pydantic field from the instance makes every later access raise
+        # AttributeError (which silently forced all wolf AI decisions to fallback).
+        self.game.wolf_discuss_round += 1
 
         wolf_ids = [p.id for p in self.game.players if p.role in (Role.WOLF, Role.WOLF_KING) and p.is_alive]
         self.add_log(
@@ -102,7 +102,7 @@ class NightWolfDiscussHandler(PhaseHandler):
                         round=self.game.wolf_discuss_round,
                     ),
                 )
-                delattr(self.game, 'wolf_discuss_round')
+                self.game.wolf_discuss_round = 0
                 return GamePhase.NIGHT_WOLF_VOTE
         return None
 
