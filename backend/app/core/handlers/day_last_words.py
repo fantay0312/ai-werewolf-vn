@@ -46,11 +46,16 @@ class DayLastWordsHandler(TurnWindowHandler):
 
     def _on_window_finished(self) -> GamePhase:
         next_phase = self._get_next_phase()
+        self.game.next_phase_after_last_words = None
         if next_phase == GamePhase.SHERIFF_ELECTION:
             self.game.pending_sheriff_election = False
         return next_phase
 
     def _get_next_phase(self) -> GamePhase:
+        # Exile last words route back into the death-skill chain / night,
+        # not into the morning flow.
+        if self.game.next_phase_after_last_words:
+            return self.game.next_phase_after_last_words
         if self.game.pending_sheriff_election and not self.game.election_cancelled:
             return GamePhase.SHERIFF_ELECTION
         return GamePhase.DAY_DISCUSS

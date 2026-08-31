@@ -219,6 +219,15 @@ def test_exiled_hunter_resolves_shot_before_provisional_wolf_win():
 
     asyncio.run(manager._advance_phase(game, GamePhase.DAY_VOTE_RESULT))
 
+    # Exiled players now speak last words before their death skill fires.
+    assert game.phase == GamePhase.DAY_LAST_WORDS
+    assert game.winner is None
+
+    success, error = asyncio.run(manager.process_action(
+        game.session_id,
+        ActionRequest(player_id=hunter.id, type=ActionType.CONFIRM),
+    ))
+    assert success is True, error
     assert game.phase == GamePhase.HUNTER_SKILL
     assert game.winner is None
 
@@ -245,7 +254,8 @@ def test_vote_result_fresh_handler_recovers_pending_death_skill():
     DayVoteResultHandler(manager, game).on_enter()
     next_phase = DayVoteResultHandler(manager, game).try_advance()
 
-    assert next_phase == GamePhase.HUNTER_SKILL
+    assert next_phase == GamePhase.DAY_LAST_WORDS
+    assert game.next_phase_after_last_words == GamePhase.HUNTER_SKILL
     assert game.winner is None
 
 
