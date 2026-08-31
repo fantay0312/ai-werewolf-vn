@@ -22,6 +22,8 @@ interface PhaseActionsProps {
   deadPlayers: number[]
   /** Tied candidates who must give a PK speech (alive). */
   pkCandidates: number[]
+  /** Living players — the eligible badge-transfer recipients. */
+  alivePlayers: Player[]
   selectedTargetId: number | null
   onSelectTarget: (id: number | null) => void
   submitAction: SubmitAction
@@ -125,6 +127,7 @@ function TargetActionGroup({ def, selectedTargetId, onSelectTarget, onConfirm, o
 export function PhaseActions({
   phase,
   myPlayer,
+  alivePlayers,
   isCandidate,
   deadPlayers,
   pkCandidates,
@@ -336,14 +339,22 @@ export function PhaseActions({
         <div className="action-group sheriff">
           <span className="action-label"><Award className="w-4 h-4" strokeWidth={1.5} />移交警徽</span>
           <div className="input-group">
-            <input
-              type="number" min={1} max={12} placeholder="目标ID"
+            <select
               aria-label="移交警徽目标"
               className="input-field"
               value={selectedTargetId ?? ''}
               onChange={e => onSelectTarget(e.target.value === '' ? null : Number(e.target.value))}
-            />
-            <button onClick={() => runTarget('vote')} className="btn btn-gold" disabled={selectedTargetId === null}>移交</button>
+            >
+              <option value="">选择玩家…</option>
+              {alivePlayers.filter(p => p.id !== myId).map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => runTarget('vote')}
+              className="btn btn-gold"
+              disabled={selectedTargetId === null || selectedTargetId === 0}
+            >移交</button>
             <button onClick={() => runSimple('vote', 0)} className="btn btn-danger">撕警徽</button>
           </div>
         </div>
